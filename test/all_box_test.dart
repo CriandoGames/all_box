@@ -97,11 +97,6 @@ void main() {
       final box = AllBox(container);
 
       final tmpPath = '${dir.path}/$container.tmp';
-      final createEvents = <FileSystemEvent>[];
-      final sub = dir.watch().listen((event) {
-        if (event.path == tmpPath) createEvents.add(event);
-      });
-      await Future<void>.delayed(const Duration(milliseconds: 20));
 
       for (var i = 0; i < 10; i++) {
         box.write('counter', i);
@@ -111,13 +106,17 @@ void main() {
       // any disk activity has had a chance to happen.
       expect(box.read<int>('counter'), 9);
       expect(File(tmpPath).existsSync(), isFalse);
+      expect(box.flushCountForTesting, 0);
 
       await Future<void>.delayed(const Duration(milliseconds: 500));
-      await sub.cancel();
 
-      final creates = createEvents.whereType<FileSystemCreateEvent>().length;
+      // Counting actual `_writeToDisk` calls instead of watching the
+      // filesystem for notifications: `Directory.watch()` is notoriously
+      // unreliable on Windows (events can be dropped, coalesced or
+      // delayed — see dart-lang/sdk#37233), which made this assertion flaky
+      // there despite the debounce logic itself working correctly.
       expect(
-        creates,
+        box.flushCountForTesting,
         1,
         reason: 'expected exactly one flush to disk despite 10 write() calls',
       );

@@ -328,6 +328,20 @@ class AllBox {
     final box = _instances.remove(container);
     box?._io?.disposeForTesting();
   }
+
+  /// Number of times this container has actually flushed to disk since
+  /// [init]. Intended for tests that need a deterministic way to assert on
+  /// debounce behavior, instead of watching the filesystem for
+  /// notifications (unreliable on Windows). Not part of the stable public
+  /// API.
+  ///
+  /// **PT-BR:** Quantidade de vezes que este container de fato gravou em
+  /// disco desde o [init]. Feito para testes que precisam de uma forma
+  /// determinística de verificar o comportamento de debounce, em vez de
+  /// observar o sistema de arquivos por notificações (instável no
+  /// Windows). Não faz parte da API pública estável.
+  @visibleForTesting
+  int get flushCountForTesting => _io?.flushCallCountForTesting ?? 0;
 }
 
 /// Handles all filesystem concerns for a single container: the write-ahead
@@ -352,6 +366,20 @@ class _ContainerIO {
 
   Timer? _debounceTimer;
   bool _dirty = false;
+
+  /// Number of times [_writeToDisk] actually ran. Only incremented for
+  /// tests — counting real disk flushes this way is deterministic across
+  /// platforms, unlike watching the filesystem for notifications (which is
+  /// notoriously unreliable on Windows: events can be dropped, coalesced or
+  /// delayed — see dart-lang/sdk#37233).
+  ///
+  /// **PT-BR:** Quantidade de vezes que [_writeToDisk] de fato rodou. Só é
+  /// incrementado para testes — contar flushes reais dessa forma é
+  /// determinístico em qualquer plataforma, ao contrário de observar o
+  /// sistema de arquivos por notificações (notoriamente instável no
+  /// Windows: eventos podem ser perdidos, agrupados ou atrasados — veja
+  /// dart-lang/sdk#37233).
+  int flushCallCountForTesting = 0;
 
   /// Chain used to serialize flushes: a new flush is only started after the
   /// previous one (successful or not) has finished, so two `writeAsString`
@@ -501,6 +529,7 @@ class _ContainerIO {
   }
 
   Future<void> _writeToDisk(Map<String, dynamic> snapshot) async {
+    flushCallCountForTesting++;
     final jsonText = jsonEncode(snapshot);
 
     // 1) Write-ahead: new content always lands on a temp file first. If the
