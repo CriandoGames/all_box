@@ -303,6 +303,34 @@ de design deliberada, não um descuido — veja a seção abaixo.
 
 ---
 
+## 📊 Resultado do Benchmark (execução local)
+
+Números de uma execução real em `benchmark/benchmark.dart` (Dart 3.9.2 stable,
+Windows 11 Pro), confirmando o custo de cada caminho descrito acima —
+leitura/escrita em memória são ordens de magnitude mais rápidas que qualquer
+caminho que toque disco, e o debounce reduz drasticamente o custo de bursts
+de escrita comparado a confirmar cada uma no disco individualmente:
+
+![Gráfico de benchmark do AllBox: tempo médio de read/write em memória, write debounced e writeAndFlush durável](docs/benchmark_result_simple.png)
+
+> **µs × ms:** o gráfico usa a unidade mais legível para cada barra —
+> **µs** (microssegundo, 1 milionésimo de segundo) para as três primeiras
+> operações, que são só memória, e **ms** (milissegundo, 1 milésimo de
+> segundo = 1.000 µs) só para `writeAndFlush()`, que realmente toca o disco
+> e por isso é ordens de magnitude mais lenta. Não é erro de unidade — é
+> zoom automático para cada barra continuar legível.
+
+| Operação | Throughput | Latência média |
+| --- | --- | --- |
+| `read<int>()` em memória | 1.495.886 ops/s | 0,67 µs/op |
+| `write()` em memória (otimista) | 92.674 ops/s | 10,79 µs/op |
+| 200× `write()` debounced + 1 `flushNow()` | 36.403 ops/s | 27,47 µs/op |
+| `writeAndFlush()` (tmp + backup + rename, por chamada) | 187 ops/s | 5,34 ms/op (= 5.340,29 µs/op) |
+
+Como o próprio `benchmark/benchmark.dart` documenta, esses números só valem para o terminal onde eu testei rode `flutter test benchmark\benchmark.dart` corretamente no seu ambiente para medir na sua.
+
+---
+
 ## 🧪 Testes
 
 ```bash
