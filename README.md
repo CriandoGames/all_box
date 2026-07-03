@@ -311,7 +311,7 @@ leitura/escrita em memória são ordens de magnitude mais rápidas que qualquer
 caminho que toque disco, e o debounce reduz drasticamente o custo de bursts
 de escrita comparado a confirmar cada uma no disco individualmente:
 
-![Gráfico de benchmark do AllBox: tempo médio de read/write em memória, write debounced e writeAndFlush durável](docs/benchmark_result_simple.png)
+![Gráfico de benchmark do AllBox: tempo médio de read/write em memória, write debounced e writeAndFlush durável](doc/benchmark_result_simple.png)
 
 > **µs × ms:** o gráfico usa a unidade mais legível para cada barra —
 > **µs** (microssegundo, 1 milionésimo de segundo) para as três primeiras
