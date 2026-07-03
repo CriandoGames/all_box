@@ -1,0 +1,26 @@
+name: all_box_example
+description: Example app demonstrating the all_box package.
+publish_to: "none"
+version: 1.0.0
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  all_box:
+    path: ../
+  # Only the *example app* depends on path_provider. AllBox itself never
+  # does — see AllBox.init's `path` parameter and the README section
+  # "Erros de path/plugin evitados".
+  path_provider: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
