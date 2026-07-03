@@ -59,7 +59,7 @@ void _report(String label, int ops, Duration elapsed) {
   final perOpMicros = micros / ops;
   final opsPerSec = ops / (micros / Duration.microsecondsPerSecond);
   print(
-    '$label: $ops ops in ${micros}µs '
+    '$label: $ops ops in $microsµs '
     '(${perOpMicros.toStringAsFixed(2)}µs/op, '
     '${opsPerSec.toStringAsFixed(0)} ops/sec)',
   );
@@ -76,7 +76,8 @@ Future<void> _benchmarkMemoryWrites(String basePath) async {
   }
   stopwatch.stop();
 
-  _report('In-memory write() (optimistic, no disk wait)', kOpCount, stopwatch.elapsed);
+  _report('In-memory write() (optimistic, no disk wait)', kOpCount,
+      stopwatch.elapsed);
 }
 
 Future<void> _benchmarkMemoryReads(String basePath) async {

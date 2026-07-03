@@ -257,11 +257,24 @@ void main() {
     });
   });
 
+  testWidgets('smoke', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: Text('oi')));
+    expect(find.text('oi'), findsOneWidget);
+  });
+
   group('AllBoxBuilder widget', () {
     testWidgets('rebuilds when the watched key changes', (tester) async {
       const container = 'builder_widget_test';
-      final dir = await _tempDir(container);
-      await AllBox.init(container, path: dir.path);
+      // In-memory backend on purpose, not a real temp dir + AllBox.init():
+      // `write()` on a disk-backed container schedules a real debounce
+      // `Timer`, and `testWidgets` runs inside a FakeAsync zone that expects
+      // every Timer to be resolved before the test ends — one left pending
+      // there hangs the test runner instead of failing it. The in-memory
+      // backend never schedules a Timer at all (every write "flushes"
+      // synchronously), so this test only has to care about the reactive
+      // rebuild, which is what it's actually testing.
+      await AllBox.initWithMemoryBackendForTesting(container);
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
       final box = AllBox(container);
 
       await tester.pumpWidget(
@@ -297,6 +310,97 @@ void main() {
       darkMode.value = true;
       expect(darkMode.value, isTrue);
       expect(box.read<bool>('darkMode'), isTrue);
+    });
+  });
+
+  group('initWithMemoryBackendForTesting', () {
+    test('seeds initial values and reads/writes work synchronously', () async {
+      const container = 'memory_backend_test';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      await AllBox.initWithMemoryBackendForTesting(
+        container,
+        initialValues: {'seeded': 'value'},
+      );
+      final box = AllBox(container);
+
+      expect(box.read<String>('seeded'), 'value');
+
+      box.write('counter', 1);
+      expect(box.read<int>('counter'), 1);
+    });
+
+    test('does not schedule any real Timer on write', () async {
+      const container = 'memory_backend_no_timer_test';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      await AllBox.initWithMemoryBackendForTesting(container);
+      final box = AllBox(container);
+
+      box.write('a', 1);
+      box.write('b', 2);
+
+      // Every write "flushes" synchronously against the in-memory backend,
+      // so there's no debounce window to wait out here — if this were a
+      // disk-backed container, this assertion would need a real delay.
+      expect(box.flushCountForTesting, 2);
+    });
+
+    test('resetInstanceForTesting clears the cached singleton', () async {
+      const container = 'memory_backend_reset_test';
+
+      await AllBox.initWithMemoryBackendForTesting(
+        container,
+        initialValues: {'k': 'v'},
+      );
+      AllBox.resetInstanceForTesting(container);
+
+      await AllBox.initWithMemoryBackendForTesting(container);
+      final box = AllBox(container);
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      // A fresh init() after reset must not see the previous instance's
+      // in-memory data.
+      expect(box.hasData('k'), isFalse);
+    });
+  });
+
+  group('write() serialization guard', () {
+    test(
+        'throws synchronously for a non-JSON-encodable value, without '
+        'writing it to memory', () async {
+      const container = 'serialization_guard_test';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      await AllBox.initWithMemoryBackendForTesting(container);
+      final box = AllBox(container);
+
+      // DateTime has no built-in toJson(); jsonEncode() rejects it. Before
+      // this guard existed, this failure would only have surfaced later,
+      // silently, inside the debounced flush.
+      expect(
+        () => box.write('when', DateTime.now()),
+        throwsArgumentError,
+      );
+      expect(box.hasData('when'), isFalse);
+    });
+
+    test('writeAndFlush() rejects a non-JSON-encodable value the same way',
+        () async {
+      const container = 'serialization_guard_flush_test';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      await AllBox.initWithMemoryBackendForTesting(container);
+      final box = AllBox(container);
+
+      // writeAndFlush() is `async`, so the synchronous throw inside it never
+      // reaches the caller directly — it surfaces as a rejected Future
+      // instead, hence expectLater() against the Future itself (not a
+      // closure).
+      await expectLater(
+        box.writeAndFlush('when', DateTime.now()),
+        throwsArgumentError,
+      );
     });
   });
 }

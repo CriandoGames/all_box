@@ -74,7 +74,7 @@ class AllBox {
       <String, List<VoidCallback>>{};
   final List<VoidCallback> _globalListeners = <VoidCallback>[];
 
-  _ContainerIO? _io;
+  _IOBackend? _io;
   bool _initialized = false;
 
   /// Whether [init] has already completed for this container.
@@ -179,6 +179,7 @@ class AllBox {
   /// rápida resultam em um único flush em disco.
   void write(String key, dynamic value) {
     _assertInitialized('write');
+    _assertSerializable('write', key, value);
     _box[key] = value;
     _notifyKey(key);
     _notifyGlobal();
@@ -194,6 +195,7 @@ class AllBox {
   /// (ignorando a janela de debounce).
   Future<void> writeAndFlush(String key, dynamic value) async {
     _assertInitialized('writeAndFlush');
+    _assertSerializable('writeAndFlush', key, value);
     _box[key] = value;
     _notifyKey(key);
     _notifyGlobal();
@@ -315,6 +317,40 @@ class AllBox {
     }
   }
 
+  /// Fails fast, synchronously, if [value] is not JSON-encodable.
+  ///
+  /// Without this, a non-encodable value (e.g. a `DateTime`, a custom class
+  /// with no `toJson()`, a cyclic structure) would only be discovered later,
+  /// inside the debounced flush — which is fire-and-forget by design, so the
+  /// failure would just become a silent `debugPrint` and the value would
+  /// never actually reach disk. Failing here, in the same call stack as
+  /// [write]/[writeAndFlush], turns that into an immediate, loud error
+  /// instead.
+  ///
+  /// **PT-BR:** Falha rápido, de forma síncrona, se [value] não for
+  /// JSON-encodável.
+  ///
+  /// Sem isso, um valor não serializável (ex.: um `DateTime`, uma classe
+  /// própria sem `toJson()`, uma estrutura cíclica) só seria descoberto
+  /// depois, dentro do flush debounced — que é fire-and-forget por design,
+  /// então a falha viraria só um `debugPrint` silencioso e o valor nunca
+  /// chegaria de fato ao disco. Falhar aqui, na mesma call stack de
+  /// [write]/[writeAndFlush], transforma isso em um erro imediato e visível.
+  void _assertSerializable(String method, String key, dynamic value) {
+    try {
+      jsonEncode(value);
+    } on Object catch (error) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'AllBox("$container").$method(\'$key\', ...): value is not '
+            'JSON-encodable ($error). All values must be JSON-encodable '
+            '(String, num, bool, null, List, Map, or an object with a '
+            'toJson() that returns one of those).',
+      );
+    }
+  }
+
   /// Removes this container's cached singleton instance and cancels any
   /// pending debounce timer, without touching whatever was already flushed
   /// to disk. Intended for tests; not part of the stable public API.
@@ -342,6 +378,73 @@ class AllBox {
   /// Windows). Não faz parte da API pública estável.
   @visibleForTesting
   int get flushCountForTesting => _io?.flushCallCountForTesting ?? 0;
+
+  /// Initializes [container] with a pure in-memory backend: no real disk
+  /// I/O, no real [Timer], no temp directory required. Every [write] is
+  /// "flushed" synchronously into an in-memory snapshot instead of a debounce
+  /// window.
+  ///
+  /// Intended for apps/packages that *consume* `all_box` and want to
+  /// unit/widget-test their own code against a real [AllBox] instance,
+  /// without the flakiness or setup cost of real filesystem access. It is
+  /// also what removes the only source of a real, pending `Timer` that a
+  /// normal [init] would
+  /// otherwise schedule on the first [write] — which matters specifically
+  /// inside `testWidgets`, since its `FakeAsync` zone expects every `Timer`
+  /// to resolve before the test ends; a real one left pending there can hang
+  /// the test runner instead of failing it.
+  ///
+  /// Not part of the stable public API — this is a testing utility, not a
+  /// second production backend.
+  ///
+  /// **PT-BR:** Inicializa [container] com um backend puramente em memória:
+  /// sem I/O real em disco, sem [Timer] real, sem precisar de diretório
+  /// temporário. Todo [write] é "flushado" de forma síncrona em um snapshot
+  /// em memória, em vez de uma janela de debounce.
+  ///
+  /// Feito para apps/pacotes que *consomem* o `all_box` e querem testar
+  /// (unit/widget) o próprio código contra uma instância real de [AllBox],
+  /// sem o custo/flakiness de acesso real ao sistema de arquivos. É também
+  /// o que elimina a única fonte de um `Timer` real pendente que um [init]
+  /// normal agendaria
+  /// no primeiro [write] — o que importa especificamente dentro de
+  /// `testWidgets`, já que sua zona `FakeAsync` espera que todo `Timer`
+  /// seja resolvido antes do teste terminar; um real deixado pendente ali
+  /// pode travar o test runner em vez de falhar o teste.
+  ///
+  /// Não faz parte da API pública estável — é um utilitário de teste, não
+  /// um segundo backend de produção.
+  @visibleForTesting
+  static Future<void> initWithMemoryBackendForTesting(
+    String container, {
+    Map<String, dynamic> initialValues = const <String, dynamic>{},
+  }) async {
+    final box = AllBox(container);
+    if (box._initialized) return;
+
+    box._io = _InMemoryIO();
+    box._box
+      ..clear()
+      ..addAll(initialValues);
+    box._initialized = true;
+  }
+}
+
+/// Internal seam between [AllBox] and however a container is actually
+/// persisted. [_ContainerIO] is the real, disk-backed implementation used by
+/// [AllBox.init]; [_InMemoryIO] is a fake used only by
+/// [AllBox.initWithMemoryBackendForTesting]. Not exported.
+///
+/// **PT-BR:** Costura interna entre [AllBox] e a forma como um container é
+/// de fato persistido. [_ContainerIO] é a implementação real, baseada em
+/// disco, usada por [AllBox.init]; [_InMemoryIO] é uma falsa usada apenas
+/// por [AllBox.initWithMemoryBackendForTesting]. Não é exportada.
+abstract class _IOBackend {
+  Future<Map<String, dynamic>> readInitial();
+  void scheduleFlush(Map<String, dynamic> snapshot);
+  Future<void> flushNow(Map<String, dynamic> snapshot);
+  void disposeForTesting();
+  int get flushCallCountForTesting;
 }
 
 /// Handles all filesystem concerns for a single container: the write-ahead
@@ -353,7 +456,7 @@ class AllBox {
 /// container: o arquivo temporário write-ahead, o rename atômico, o
 /// fallback `.bak`, o timer de debounce e a fila de flush serializada. Não
 /// é exportada — é puramente um detalhe de implementação do [AllBox].
-class _ContainerIO {
+class _ContainerIO implements _IOBackend {
   _ContainerIO({
     required this.container,
     required String directoryPath,
@@ -379,6 +482,7 @@ class _ContainerIO {
   /// sistema de arquivos por notificações (notoriamente instável no
   /// Windows: eventos podem ser perdidos, agrupados ou atrasados — veja
   /// dart-lang/sdk#37233).
+  @override
   int flushCallCountForTesting = 0;
 
   /// Chain used to serialize flushes: a new flush is only started after the
@@ -408,6 +512,7 @@ class _ContainerIO {
   /// primeiro o arquivo principal e recorrendo ao arquivo de backup em
   /// seguida. Nunca lança exceção: qualquer falha resulta em um container
   /// vazio, em vez de derrubar quem chamou.
+  @override
   Future<Map<String, dynamic>> readInitial() async {
     if (!_directory.existsSync()) {
       await _directory.create(recursive: true);
@@ -470,7 +575,9 @@ class _ContainerIO {
     try {
       final dynamic decoded = jsonDecode(text);
       if (decoded is Map<String, dynamic>) return decoded;
-      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      if (decoded is Map<dynamic, dynamic>) {
+        return Map<String, dynamic>.from(decoded);
+      }
       return null;
     } on FormatException {
       return null;
@@ -483,6 +590,7 @@ class _ContainerIO {
   /// **PT-BR:** Agenda um flush com debounce: se chamado novamente antes
   /// de [flushDelay] decorrer, o timer é reiniciado e, no fim, apenas um
   /// flush é executado.
+  @override
   void scheduleFlush(Map<String, dynamic> snapshot) {
     _dirty = true;
     _debounceTimer?.cancel();
@@ -490,8 +598,10 @@ class _ContainerIO {
       if (!_dirty) return;
       _dirty = false;
       // This flush is fire-and-forget (nobody awaits it), so a failure here
-      // — e.g. a non-JSON-encodable value slipping into a debounced
-      // write() — must not become an unhandled Future error. Callers using
+      // — e.g. a real disk error such as running out of space or a
+      // permission problem (non-JSON-encodable values are already rejected
+      // synchronously in AllBox.write/writeAndFlush, before they ever reach
+      // here) — must not become an unhandled Future error. Callers using
       // writeAndFlush()/flushNow() still see failures normally, since they
       // await _enqueueFlush's result directly.
       unawaited(
@@ -514,6 +624,7 @@ class _ContainerIO {
   /// **PT-BR:** Cancela qualquer flush com debounce pendente e grava
   /// [snapshot] imediatamente, ainda passando pela fila de flush
   /// serializada.
+  @override
   Future<void> flushNow(Map<String, dynamic> snapshot) {
     _debounceTimer?.cancel();
     _dirty = false;
@@ -551,7 +662,44 @@ class _ContainerIO {
     await _tmpFile.rename(_dbFile.path);
   }
 
+  @override
   void disposeForTesting() {
     _debounceTimer?.cancel();
   }
+}
+
+/// Pure in-memory [_IOBackend] used only by
+/// [AllBox.initWithMemoryBackendForTesting]. Does no real disk I/O and
+/// schedules no real [Timer] — every write is "flushed" synchronously into
+/// an in-memory snapshot.
+///
+/// **PT-BR:** [_IOBackend] puramente em memória, usado apenas por
+/// [AllBox.initWithMemoryBackendForTesting]. Não faz I/O real em disco e
+/// não agenda nenhum [Timer] real — todo write é "flushado" de forma
+/// síncrona em um snapshot em memória.
+class _InMemoryIO implements _IOBackend {
+  Map<String, dynamic> _lastSnapshot = <String, dynamic>{};
+
+  @override
+  int flushCallCountForTesting = 0;
+
+  @override
+  Future<Map<String, dynamic>> readInitial() async {
+    return Map<String, dynamic>.of(_lastSnapshot);
+  }
+
+  @override
+  void scheduleFlush(Map<String, dynamic> snapshot) {
+    flushCallCountForTesting++;
+    _lastSnapshot = Map<String, dynamic>.of(snapshot);
+  }
+
+  @override
+  Future<void> flushNow(Map<String, dynamic> snapshot) async {
+    flushCallCountForTesting++;
+    _lastSnapshot = Map<String, dynamic>.of(snapshot);
+  }
+
+  @override
+  void disposeForTesting() {}
 }

@@ -1,0 +1,56 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  analyze_and_test:
+    name: analyze + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter analyze
+        run: flutter analyze --fatal-infos
+
+      - name: dart format --output=none --set-exit-if-changed
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: flutter test
+        run: flutter test
+
+  benchmark_smoke:
+    name: benchmark smoke (dart run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      # Not asserting on numbers (they're only meaningful relative to a
+      # single machine/disk, per benchmark/benchmark.dart) — this job only
+      # makes sure the benchmark script itself still runs end-to-end.
+      - name: dart run benchmark/benchmark.dart
+        run: dart run benchmark/benchmark.dart

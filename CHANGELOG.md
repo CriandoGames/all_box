@@ -23,5 +23,11 @@ Initial release.
 * `AllBoxListenable<T>` (`ChangeNotifier` + `ValueListenable<T?>`) and
   `AllBoxBuilder<T>` widget — pure-Flutter reactive layer.
 * Optional `.val()` extension on `String`, DI-free.
+* `AllBox.initWithMemoryBackendForTesting()` — pure in-memory backend for
+  apps/packages that consume `all_box` to unit/widget-test their own code,
+  with no real disk I/O and no real `Timer` scheduled on `write()`.
+* `write()`/`writeAndFlush()` now validate that the value is JSON-encodable
+  synchronously and throw `ArgumentError` immediately, instead of only
+  failing silently later inside the debounced flush.
 * No Web support in this release (documented limitation). Not isolate-safe
   (documented limitation).

@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/testes-12-brightgreen" alt="12 testes">
+  <img src="https://img.shields.io/badge/testes-18-brightgreen" alt="18 testes">
 </p>
 
 ---
@@ -240,8 +240,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 | `AllBox([container])` | Factory constructor; retorna um singleton por nome de container. |
 | `static AllBox.init(container, {required path, flushDelay})` | Carrega o `container` do disco para a memória. `path` é obrigatório — veja abaixo. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Leituras síncronas. |
-| `void write(key, value)` | Escrita otimista + debounced. |
-| `Future<void> writeAndFlush(key, value)` | Escreve e espera a confirmação em disco. |
+| `void write(key, value)` | Escrita otimista + debounced. Lança `ArgumentError` na hora se `value` não for JSON-encodável. |
+| `Future<void> writeAndFlush(key, value)` | Escreve e espera a confirmação em disco. Mesma validação de serialização de `write()`. |
 | `void remove(key)` / `void erase()` | Remove uma chave / limpa tudo (`erase()` notifica os listeners de todas as chaves que existiam). |
 | `Future<void> flushNow()` | Força um flush imediato, ignorando a janela de debounce. |
 | `listenKey(key, cb)` / `removeListenKey(key, cb)` | Listeners por chave. |
@@ -277,74 +277,24 @@ de design deliberada, não um descuido — veja a seção abaixo.
   flush debounced ainda em andamento.
 - **Benchmark próprio.** Números de performance medidos e mantidos neste
   repositório; veja `benchmark/`.
+- **Validação de serialização síncrona.** `write()`/`writeAndFlush()`
+  chamam `jsonEncode` no valor na hora e lançam `ArgumentError` imediato se
+  ele não for serializável — em vez de descobrir isso só dentro do flush
+  debounced (que é fire-and-forget e só logaria um `debugPrint`).
 - **Sem suporte a Web nesta v1** (ver limitações abaixo).
-
----
-
-## 🔄 Diferenças em relação ao GetStorage
-
-- **Sem `package:get`.** Nenhuma classe deste pacote importa ou depende de
-  `package:get`; a camada reativa (`AllBoxListenable`/`AllBoxBuilder`) é
-  Flutter puro (`ChangeNotifier`/`ValueListenable`).
-- **`path` obrigatório em `init()`.** O GetStorage resolve o diretório
-  internamente por padrão; o `all_box` exige que quem chama `init()` informe
-  o `path`, evitando qualquer resolução de plugin dentro da lib.
-- **Crash-safety com write-ahead + rename atômico.** Toda escrita em disco
-  passa por um arquivo `.tmp` e só então um rename atômico substitui o
-  arquivo principal (`.db`); um `.bak` do último estado bom é mantido à
-  parte. O GetStorage original não faz isso (ver PR #175 abaixo).
-- **Tratamento de leitura em dois estágios.** Erros de decodificação UTF-8 e
-  erros de `jsonDecode` são tratados como estágios/pontos de falha
-  distintos, cada um com fallback para o `.bak` antes de desistir e começar
-  vazio.
-- **Fila de flush serializada.** Nunca há duas escritas concorrentes no
-  mesmo arquivo, mesmo se `flushNow()`/`writeAndFlush()` for chamado com um
-  flush debounced ainda em andamento.
-- **Benchmark próprio.** Não reaproveitamos os números de benchmark do
-  get_storage original (contestados na PR #154); veja `benchmark/`.
-- **Sem suporte a Web nesta v1** (ver limitações abaixo).
-
----
-
-## 🐛 Bugs conhecidos do get_storage original que evitamos aqui
-
-Estes são pontos mapeados no repositório
-[`jonataslaw/get_storage`](https://github.com/jonataslaw/get_storage) (issues
-e PRs abertas, não mergeadas, no momento em que este pacote foi escrito):
-
-- **PR #175** — padrão write-ahead ainda não implementado no original:
-  escrita direta no arquivo principal pode corromper o container se o
-  processo morrer no meio da gravação. Aqui: gravação sempre passa por
-  `.tmp` + rename atômico + `.bak` (ver "Crash-safety" acima).
-- **Issues #35, #90, #33, #56 / PR #149** — `MissingPluginException`
-  causada por resolver `path_provider` (ou canais de plataforma
-  equivalentes) antes do binding do Flutter estar pronto, ou dentro de uma
-  `Activity` customizada (ex.: `FlutterFragmentActivity`). Aqui: `path` é
-  sempre parâmetro explícito de `init()`; a lib nunca importa
-  `path_provider`.
-- **Issue #157 / PR #167** — suporte a Web via `dart:html`, que quebra a
-  compilação para WASM (`dart2wasm`). Aqui: Web fica de fora do MVP; se um
-  dia for implementado, será via `package:web` com conditional imports,
-  nunca `dart:html` (ver limitações abaixo).
-- **PR #154** — números de benchmark do get_storage original foram
-  contestados como incorretos. Aqui: benchmark próprio, com metodologia
-  descrita, em `benchmark/benchmark.dart`.
 
 ---
 
 ## ⚠️ Limitações conhecidas (documentadas, não escondidas)
 
 - **Sem suporte a Web nesta v1.** Se um dia for adicionado, deve usar
-  `package:web` via conditional imports — **nunca** `dart:html`, pois
-  `dart:html` impede a compilação para WASM (`dart2wasm`). Este é um
-  problema real, ainda não resolvido no get_storage original (issue #157,
-  PR #167 aberta).
+  `package:web` via conditional imports — **nunca** `dart:html`, já que
+  `dart:html` impede a compilação para WASM (`dart2wasm`).
 - **Não é isolate-safe.** Cada `AllBox` mantém seu estado em memória no
-  isolate onde foi inicializado; não há sincronização entre isolates
-  (mesma limitação documentada pelo get_storage original). Se você usa
-  múltiplos isolates (ex.: `compute()`, isolates de background), cada um
-  precisa do seu próprio `init()` e eles não verão as escritas uns dos
-  outros até reler do disco.
+  isolate onde foi inicializado; não há sincronização entre isolates. Se
+  você usa múltiplos isolates (ex.: `compute()`, isolates de background),
+  cada um precisa do seu próprio `init()` e eles não verão as escritas uns
+  dos outros até reler do disco.
 - **`File.rename` para o swap atômico depende do sistema operacional.** Em
   POSIX (Linux/macOS/Android/iOS) o rename sobre um arquivo existente é
   atômico. Em Windows o comportamento pode variar entre versões do SDK do
@@ -364,6 +314,24 @@ corrompido com bytes binários aleatórios, JSON inválido, fallback para
 `.bak`, múltiplos `write()` gerando um único flush, isolamento entre
 containers, notificação correta de listeners em `erase()`, e
 `listenKey`/`listenAll` sendo corretamente removidos.
+
+### Testando código que consome o `all_box`
+
+Se você está testando seu próprio app/pacote (não o `all_box` em si), não
+precisa de um diretório real em disco — use o backend em memória:
+
+```dart
+await AllBox.initWithMemoryBackendForTesting(
+  'my_container',
+  initialValues: {'darkMode': true},
+);
+```
+
+Isso não faz I/O real e não agenda nenhum `Timer` real (todo `write()`
+"flusha" de forma síncrona) — é especialmente importante dentro de
+`testWidgets`: sua zona `FakeAsync` espera que todo `Timer` seja resolvido
+antes do teste terminar, e um container disk-backed real deixaria um
+`Timer` de debounce pendente ali.
 
 ---
 
