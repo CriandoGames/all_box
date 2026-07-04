@@ -90,6 +90,17 @@ class AllBox {
   /// `getApplicationDocumentsDirectory`, or any other means) is entirely the
   /// caller's responsibility — `AllBox` deliberately never does this itself.
   ///
+  /// [initialData], if non-empty, is only ever applied on a genuine first
+  /// run — i.e. when `<container>.db` and `<container>.bak` do not exist
+  /// yet. It seeds the container with default values (e.g. onboarding
+  /// flags, default settings) so callers don't need a separate `write()`
+  /// right after `init()`. It is immediately persisted to disk (bypassing
+  /// the debounce window), so the seed survives a crash right after first
+  /// launch. If the container was already persisted before — even as an
+  /// intentionally empty `{}` written by a previous [erase] — [initialData]
+  /// is ignored and whatever is on disk wins, exactly like a normal
+  /// [init] call.
+  ///
   /// Calling [init] again for a container that is already initialized is a
   /// no-op; the container keeps whatever data it currently holds in memory.
   ///
@@ -103,12 +114,24 @@ class AllBox {
   /// responsabilidade inteiramente de quem chama — o `AllBox`
   /// deliberadamente nunca faz isso sozinho.
   ///
+  /// [initialData], se não vazio, só é aplicado em um first-run de
+  /// verdade — ou seja, quando `<container>.db` e `<container>.bak` ainda
+  /// não existem. Ele popula o container com valores default (ex.: flags
+  /// de onboarding, configurações padrão), evitando um `write()` separado
+  /// logo após o `init()`. É persistido imediatamente em disco (ignorando
+  /// a janela de debounce), então o seed sobrevive a um crash logo após o
+  /// primeiro lançamento do app. Se o container já tinha sido persistido
+  /// antes — mesmo que como um `{}` intencionalmente vazio escrito por um
+  /// [erase] anterior — [initialData] é ignorado e o que está em disco
+  /// prevalece, exatamente como em uma chamada normal de [init].
+  ///
   /// Chamar [init] novamente para um container já inicializado é um no-op;
   /// o container mantém os dados que já tinha em memória.
   static Future<void> init(
     String container, {
     required String path,
     Duration flushDelay = defaultFlushDelay,
+    Map<String, dynamic> initialData = const <String, dynamic>{},
   }) async {
     final box = AllBox(container);
     if (box._initialized) return;
@@ -118,13 +141,25 @@ class AllBox {
       directoryPath: path,
       flushDelay: flushDelay,
     );
+
+    final isFirstRun = !io.hasPersistedData;
     final data = await io.readInitial();
 
     box._io = io;
-    box._box
-      ..clear()
-      ..addAll(data);
-    box._initialized = true;
+    if (isFirstRun && initialData.isNotEmpty) {
+      box._box
+        ..clear()
+        ..addAll(initialData);
+      box._initialized = true;
+      // Persist the seed right away so it isn't lost if the process dies
+      // before the first real write() would have flushed it.
+      await io.flushNow(box._box);
+    } else {
+      box._box
+        ..clear()
+        ..addAll(data);
+      box._initialized = true;
+    }
   }
 
   /// Reads [key] synchronously, returning `null` if it is absent or stored
@@ -179,7 +214,7 @@ class AllBox {
   /// rápida resultam em um único flush em disco.
   void write(String key, dynamic value) {
     _assertInitialized('write');
-    _assertSerializable('write', key, value);
+    _warnIfNotSerializable('write', key, value);
     _box[key] = value;
     _notifyKey(key);
     _notifyGlobal();
@@ -195,7 +230,7 @@ class AllBox {
   /// (ignorando a janela de debounce).
   Future<void> writeAndFlush(String key, dynamic value) async {
     _assertInitialized('writeAndFlush');
-    _assertSerializable('writeAndFlush', key, value);
+    _warnIfNotSerializable('writeAndFlush', key, value);
     _box[key] = value;
     _notifyKey(key);
     _notifyGlobal();
@@ -317,36 +352,44 @@ class AllBox {
     }
   }
 
-  /// Fails fast, synchronously, if [value] is not JSON-encodable.
+  /// In debug builds only, warns loudly (via [debugPrint], wrapped in ANSI
+  /// red) if [value] is not JSON-encodable. Never throws and never blocks
+  /// [write]/[writeAndFlush] — the value is still written to memory and
+  /// still handed off to the flush pipeline exactly as-is, same as
+  /// `GetStorage`. If it truly can't be encoded, it will simply fail again,
+  /// silently, inside the flush (already handled there via `debugPrint` for
+  /// the debounced path, or via a rejected `Future` for
+  /// `writeAndFlush`/`flushNow`).
   ///
-  /// Without this, a non-encodable value (e.g. a `DateTime`, a custom class
-  /// with no `toJson()`, a cyclic structure) would only be discovered later,
-  /// inside the debounced flush — which is fire-and-forget by design, so the
-  /// failure would just become a silent `debugPrint` and the value would
-  /// never actually reach disk. Failing here, in the same call stack as
-  /// [write]/[writeAndFlush], turns that into an immediate, loud error
-  /// instead.
+  /// This is intentionally a warning, not a fail-fast `ArgumentError`: a
+  /// production app should never crash because a caller stored a
+  /// `DateTime`, an `enum` without `toJson()`, or some other non-encodable
+  /// value — it should just be told about it, loudly, while developing.
   ///
-  /// **PT-BR:** Falha rápido, de forma síncrona, se [value] não for
-  /// JSON-encodável.
+  /// **PT-BR:** Somente em builds de debug, avisa de forma bem visível (via
+  /// [debugPrint], com ANSI vermelho) se [value] não for JSON-encodável.
+  /// Nunca lança exceção e nunca bloqueia [write]/[writeAndFlush] — o valor
+  /// continua sendo escrito em memória e repassado ao pipeline de flush do
+  /// jeito que está, igual ao `GetStorage`. Se de fato não puder ser
+  /// codificado, ele vai falhar de novo, silenciosamente, lá dentro do
+  /// flush (já tratado ali via `debugPrint` no caminho debounced, ou via
+  /// `Future` rejeitada em `writeAndFlush`/`flushNow`).
   ///
-  /// Sem isso, um valor não serializável (ex.: um `DateTime`, uma classe
-  /// própria sem `toJson()`, uma estrutura cíclica) só seria descoberto
-  /// depois, dentro do flush debounced — que é fire-and-forget por design,
-  /// então a falha viraria só um `debugPrint` silencioso e o valor nunca
-  /// chegaria de fato ao disco. Falhar aqui, na mesma call stack de
-  /// [write]/[writeAndFlush], transforma isso em um erro imediato e visível.
-  void _assertSerializable(String method, String key, dynamic value) {
+  /// Isso é intencionalmente um aviso, não um `ArgumentError` fail-fast: um
+  /// app em produção não deveria nunca quebrar porque alguém gravou um
+  /// `DateTime`, um `enum` sem `toJson()`, ou outro valor não codificável —
+  /// deveria só ser avisado disso, bem alto, durante o desenvolvimento.
+  void _warnIfNotSerializable(String method, String key, dynamic value) {
+    if (!kDebugMode) return;
     try {
       jsonEncode(value);
     } on Object catch (error) {
-      throw ArgumentError.value(
-        value,
-        'value',
-        'AllBox("$container").$method(\'$key\', ...): value is not '
-            'JSON-encodable ($error). All values must be JSON-encodable '
-            '(String, num, bool, null, List, Map, or an object with a '
-            'toJson() that returns one of those).',
+      debugPrint(
+        '\x1B[31mAllBox("$container").$method(\'$key\', ...): value is not '
+        'JSON-encodable ($error). It was written to memory anyway, but it '
+        'will silently fail to reach disk. All values must be '
+        'JSON-encodable (String, num, bool, null, List, Map, or an object '
+        'with a toJson() that returns one of those).\x1B[0m',
       );
     }
   }
@@ -503,6 +546,33 @@ class _ContainerIO implements _IOBackend {
 
   File get _bakFile =>
       File('${_directory.path}${Platform.pathSeparator}$container.bak');
+
+  /// Whether this container has ever actually been flushed to disk before,
+  /// i.e. whether [_dbFile] or [_bakFile] already exists. Checked
+  /// synchronously, on purpose: it must be read before [readInitial] has any
+  /// chance to create the directory or touch either file, so it reflects
+  /// the state exactly as [AllBox.init] found it.
+  ///
+  /// Used by [AllBox.init] to decide whether an `initialData` seed should
+  /// be applied. A seed is only ever written on a genuine first run — never
+  /// re-applied over legitimately-persisted data, including an
+  /// intentionally empty container left behind by a previous [AllBox.erase]
+  /// (which still writes a `{}` file, so this returns `true` for it).
+  ///
+  /// **PT-BR:** Se este container já foi de fato gravado em disco alguma
+  /// vez, ou seja, se [_dbFile] ou [_bakFile] já existem. Verificado de
+  /// forma síncrona, de propósito: precisa ser lido antes de [readInitial]
+  /// ter qualquer chance de criar o diretório ou tocar em algum dos
+  /// arquivos, para refletir o estado exatamente como o [AllBox.init]
+  /// encontrou.
+  ///
+  /// Usado pelo [AllBox.init] para decidir se um seed de `initialData` deve
+  /// ser aplicado. Um seed só é gravado em um first-run de verdade — nunca
+  /// reaplicado sobre dado legitimamente persistido, incluindo um container
+  /// intencionalmente vazio deixado por um [AllBox.erase] anterior (que
+  /// ainda assim escreve um arquivo `{}`, então isso retorna `true` para
+  /// esse caso).
+  bool get hasPersistedData => _dbFile.existsSync() || _bakFile.existsSync();
 
   /// Loads the initial data for this container, trying the main file first
   /// and falling back to the backup file. Never throws: any failure results

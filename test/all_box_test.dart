@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -80,6 +81,72 @@ void main() {
       final box = AllBox(container);
 
       expect(box.read<String>('greeting'), 'from backup');
+    });
+  });
+
+  group('initialData seed', () {
+    test('seeds a brand-new container and persists it immediately', () async {
+      const container = 'seed_first_run';
+      final dir = await _tempDir(container);
+
+      await AllBox.init(
+        container,
+        path: dir.path,
+        initialData: const {'darkMode': true, 'onboarded': false},
+      );
+      final box = AllBox(container);
+
+      expect(box.read<bool>('darkMode'), isTrue);
+      expect(box.read<bool>('onboarded'), isFalse);
+
+      // The seed must already be on disk, not just in memory — a crash
+      // right after this init() should not lose it.
+      final dbFile = File('${dir.path}/$container.db');
+      expect(dbFile.existsSync(), isTrue);
+      expect(jsonDecode(await dbFile.readAsString()), {
+        'darkMode': true,
+        'onboarded': false,
+      });
+    });
+
+    test('is ignored when the container was already persisted before',
+        () async {
+      const container = 'seed_ignored_when_persisted';
+      final dir = await _tempDir(container);
+
+      await File('${dir.path}/$container.db')
+          .writeAsString('{"darkMode":false}');
+
+      await AllBox.init(
+        container,
+        path: dir.path,
+        initialData: const {'darkMode': true, 'onboarded': true},
+      );
+      final box = AllBox(container);
+
+      // Whatever was already on disk wins; the seed never overwrites it.
+      expect(box.read<bool>('darkMode'), isFalse);
+      expect(box.hasData('onboarded'), isFalse);
+    });
+
+    test('is ignored for a container previously left empty by erase()',
+        () async {
+      const container = 'seed_ignored_after_erase';
+      final dir = await _tempDir(container);
+
+      // An empty `{}` written by a prior erase() still counts as
+      // "persisted before" — it must not be reseeded on the next launch.
+      await File('${dir.path}/$container.db').writeAsString('{}');
+
+      await AllBox.init(
+        container,
+        path: dir.path,
+        initialData: const {'darkMode': true},
+      );
+      final box = AllBox(container);
+
+      expect(box.hasData('darkMode'), isFalse);
+      expect(box.getKeys(), isEmpty);
     });
   });
 
@@ -367,25 +434,27 @@ void main() {
 
   group('write() serialization guard', () {
     test(
-        'throws synchronously for a non-JSON-encodable value, without '
-        'writing it to memory', () async {
+        'writes a non-JSON-encodable value to memory anyway, without '
+        'throwing (matches GetStorage\'s permissive behavior; only a debug '
+        'warning is logged)', () async {
       const container = 'serialization_guard_test';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
 
       await AllBox.initWithMemoryBackendForTesting(container);
       final box = AllBox(container);
 
-      // DateTime has no built-in toJson(); jsonEncode() rejects it. Before
-      // this guard existed, this failure would only have surfaced later,
-      // silently, inside the debounced flush.
-      expect(
-        () => box.write('when', DateTime.now()),
-        throwsArgumentError,
-      );
-      expect(box.hasData('when'), isFalse);
+      // DateTime has no built-in toJson(); jsonEncode() rejects it. This no
+      // longer throws — it's only ever reported via a debug-mode
+      // debugPrint(), same as GetStorage never blocking a write() call for
+      // this. It will still silently fail to reach disk once a real,
+      // disk-backed flush actually tries to jsonEncode() it.
+      expect(() => box.write('when', DateTime.now()), returnsNormally);
+      expect(box.hasData('when'), isTrue);
     });
 
-    test('writeAndFlush() rejects a non-JSON-encodable value the same way',
+    test(
+        'writeAndFlush() does not throw for a non-JSON-encodable value '
+        'against the in-memory test backend (which never encodes to JSON)',
         () async {
       const container = 'serialization_guard_flush_test';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
@@ -393,14 +462,11 @@ void main() {
       await AllBox.initWithMemoryBackendForTesting(container);
       final box = AllBox(container);
 
-      // writeAndFlush() is `async`, so the synchronous throw inside it never
-      // reaches the caller directly — it surfaces as a rejected Future
-      // instead, hence expectLater() against the Future itself (not a
-      // closure).
       await expectLater(
         box.writeAndFlush('when', DateTime.now()),
-        throwsArgumentError,
+        completes,
       );
+      expect(box.hasData('when'), isTrue);
     });
   });
 }

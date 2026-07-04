@@ -101,6 +101,26 @@ Future<void> main() async {
 }
 ```
 
+### Seed de dados no primeiro run (`initialData`)
+
+```dart
+await AllBox.init(
+  'settings',
+  path: dir.path,
+  initialData: const {
+    'darkMode': false,
+    'onboarded': false,
+  },
+);
+```
+
+`initialData` só é aplicado em um first-run de verdade — quando o container
+ainda não tem `<container>.db`/`<container>.bak` no disco. É persistido
+imediatamente (não espera o debounce), então sobrevive a um crash logo após
+o primeiro lançamento do app. Se o container já existia antes — mesmo que
+como um `{}` vazio deixado por um `erase()` anterior — `initialData` é
+ignorado e o que está em disco prevalece.
+
 ### Leitura e escrita (toda leitura é síncrona)
 
 ```dart
@@ -238,10 +258,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 | Member | Descrição |
 | --- | --- |
 | `AllBox([container])` | Factory constructor; retorna um singleton por nome de container. |
-| `static AllBox.init(container, {required path, flushDelay})` | Carrega o `container` do disco para a memória. `path` é obrigatório — veja abaixo. |
+| `static AllBox.init(container, {required path, flushDelay, initialData})` | Carrega o `container` do disco para a memória. `path` é obrigatório — veja abaixo. `initialData` semeia valores default, mas só num first-run de verdade. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Leituras síncronas. |
-| `void write(key, value)` | Escrita otimista + debounced. Lança `ArgumentError` na hora se `value` não for JSON-encodável. |
-| `Future<void> writeAndFlush(key, value)` | Escreve e espera a confirmação em disco. Mesma validação de serialização de `write()`. |
+| `void write(key, value)` | Escrita otimista + debounced. Em debug, avisa (via `debugPrint` em vermelho) se `value` não for JSON-encodável, mas nunca lança exceção. |
+| `Future<void> writeAndFlush(key, value)` | Escreve e espera a confirmação em disco. Mesmo aviso de serialização de `write()`. |
 | `void remove(key)` / `void erase()` | Remove uma chave / limpa tudo (`erase()` notifica os listeners de todas as chaves que existiam). |
 | `Future<void> flushNow()` | Força um flush imediato, ignorando a janela de debounce. |
 | `listenKey(key, cb)` / `removeListenKey(key, cb)` | Listeners por chave. |
@@ -264,6 +284,11 @@ de design deliberada, não um descuido — veja a seção abaixo.
 - **`path` explícito e obrigatório em `init()`.** O `all_box` nunca resolve
   diretório algum internamente — quem chama `init()` sempre informa o
   `path`, evitando qualquer resolução de plugin dentro da lib.
+- **`initialData` só se aplica em first-run de verdade.** A checagem é feita
+  pela existência de `<container>.db`/`<container>.bak` em disco, não pelo
+  conteúdo em memória — um container esvaziado por `erase()` ainda tem um
+  `{}` persistido, então não é considerado "primeiro run" e o seed não é
+  reaplicado por cima dele.
 - **Crash-safety com write-ahead + rename atômico.** Toda escrita em disco
   passa por um arquivo `.tmp` e só então um rename atômico substitui o
   arquivo principal (`.db`); um `.bak` do último estado bom é mantido à
@@ -277,10 +302,13 @@ de design deliberada, não um descuido — veja a seção abaixo.
   flush debounced ainda em andamento.
 - **Benchmark próprio.** Números de performance medidos e mantidos neste
   repositório; veja `benchmark/`.
-- **Validação de serialização síncrona.** `write()`/`writeAndFlush()`
-  chamam `jsonEncode` no valor na hora e lançam `ArgumentError` imediato se
-  ele não for serializável — em vez de descobrir isso só dentro do flush
-  debounced (que é fire-and-forget e só logaria um `debugPrint`).
+- **Aviso de serialização em debug, não exceção.** `write()`/`writeAndFlush()`
+  chamam `jsonEncode` no valor na hora, só em debug, e emitem um
+  `debugPrint` em vermelho se ele não for serializável — mas nunca lançam
+  exceção nem bloqueiam a escrita (mesmo comportamento permissivo do
+  `GetStorage`). O valor segue gravado em memória normalmente; se
+  realmente não puder ser codificado, a falha só volta a aparecer, calada,
+  lá dentro do flush.
 - **Sem suporte a Web nesta v1** (ver limitações abaixo).
 
 ---

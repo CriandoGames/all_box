@@ -1,3 +1,16 @@
+## 0.2.0
+
+* `AllBox.init()` gains an `initialData` parameter, seeding default values
+  on a genuine first run only (checked via the presence of
+  `<container>.db`/`<container>.bak` on disk, not via in-memory state, so a
+  container emptied by a previous `erase()` is correctly never reseeded).
+  The seed is persisted immediately, bypassing the debounce window.
+* `write()`/`writeAndFlush()` no longer throw `ArgumentError` for a
+  non-JSON-encodable value. In debug builds only, they now log a loud
+  `debugPrint` warning (wrapped in ANSI red) instead, matching
+  `GetStorage`'s permissive behavior — the write still goes through in
+  memory either way.
+
 ## 0.1.0
 
 Initial release.
@@ -26,8 +39,8 @@ Initial release.
 * `AllBox.initWithMemoryBackendForTesting()` — pure in-memory backend for
   apps/packages that consume `all_box` to unit/widget-test their own code,
   with no real disk I/O and no real `Timer` scheduled on `write()`.
-* `write()`/`writeAndFlush()` now validate that the value is JSON-encodable
-  synchronously and throw `ArgumentError` immediately, instead of only
-  failing silently later inside the debounced flush.
+* `write()`/`writeAndFlush()` validated that the value was JSON-encodable
+  synchronously and threw `ArgumentError` immediately if not (superseded in
+  0.2.0 by a debug-only warning — see above).
 * No Web support in this release (documented limitation). Not isolate-safe
   (documented limitation).
