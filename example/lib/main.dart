@@ -2,6 +2,8 @@ import 'package:all_box/all_box.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'benchmark/benchmark_page.dart';
+
 /// This is the example app's job, not AllBox's: AllBox never resolves its
 /// own storage directory (see spec item 9 / README "Erros de path/plugin
 /// evitados"). Here we do it explicitly, *after*
@@ -96,7 +98,20 @@ class _CounterPageState extends State<CounterPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('all_box example')),
+      appBar: AppBar(
+        title: const Text('all_box example'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.speed),
+            tooltip: 'Comparativo de storage',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const BenchmarkPage(),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

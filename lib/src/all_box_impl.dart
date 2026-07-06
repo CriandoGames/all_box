@@ -237,6 +237,47 @@ class AllBox {
     await _io!.flushNow(_box);
   }
 
+  /// Like [write], but returns a [Future] that completes once the new value
+  /// has been handed to the operating system's write buffer (bypassing the
+  /// debounce window) — **without** forcing an fsync.
+  ///
+  /// This is the intermediate durability tier, equivalent to what
+  /// `Hive.put`-style APIs offer: when the [Future] completes, the data
+  /// survives an app crash, but not necessarily a power loss / OS crash
+  /// (the OS may still be holding it in its page cache). It keeps the full
+  /// write-ahead + atomic-rename pipeline, so the container file can never
+  /// be left half-written. It is orders of magnitude cheaper than
+  /// [writeAndFlush], whose fsync is the only guarantee that survives
+  /// power loss.
+  ///
+  /// Durability ladder: [write] (optimistic, debounced) → [writeAndSave]
+  /// (waits for the OS write) → [writeAndFlush] (waits for fsync).
+  ///
+  /// **PT-BR:** Igual a [write], mas retorna um [Future] que completa
+  /// quando o novo valor foi entregue ao buffer de escrita do sistema
+  /// operacional (ignorando a janela de debounce) — **sem** forçar fsync.
+  ///
+  /// É o nível intermediário de durabilidade, equivalente ao que APIs
+  /// estilo `Hive.put` oferecem: quando o [Future] completa, o dado
+  /// sobrevive a um crash do app, mas não necessariamente a uma queda de
+  /// energia / crash do OS (o OS ainda pode estar segurando o dado no page
+  /// cache). Mantém o pipeline completo de write-ahead + rename atômico,
+  /// então o arquivo do container nunca fica meio-escrito. É ordens de
+  /// magnitude mais barato que [writeAndFlush], cujo fsync é a única
+  /// garantia que sobrevive a queda de energia.
+  ///
+  /// Escada de durabilidade: [write] (otimista, debounced) →
+  /// [writeAndSave] (espera o write do OS) → [writeAndFlush] (espera o
+  /// fsync).
+  Future<void> writeAndSave(String key, dynamic value) async {
+    _assertInitialized('writeAndSave');
+    _warnIfNotSerializable('writeAndSave', key, value);
+    _box[key] = value;
+    _notifyKey(key);
+    _notifyGlobal();
+    await _io!.flushNow(_box, fsync: false);
+  }
+
   /// Removes [key], notifying its listeners if it was present.
   ///
   /// **PT-BR:** Remove [key], notificando seus listeners se ela existia.
@@ -485,7 +526,7 @@ class AllBox {
 abstract class _IOBackend {
   Future<Map<String, dynamic>> readInitial();
   void scheduleFlush(Map<String, dynamic> snapshot);
-  Future<void> flushNow(Map<String, dynamic> snapshot);
+  Future<void> flushNow(Map<String, dynamic> snapshot, {bool fsync});
   void disposeForTesting();
   int get flushCallCountForTesting;
 }
@@ -654,16 +695,45 @@ class _ContainerIO implements _IOBackend {
     }
   }
 
-  /// Schedules a debounced flush: if called again before [flushDelay]
-  /// elapses, the timer is reset and only a single flush eventually runs.
+  /// Schedules a coalesced flush: the first write of a burst arms a single
+  /// [Timer]; every subsequent write within [flushDelay] just marks the
+  /// container dirty and rides on the already-armed timer, so a burst still
+  /// produces exactly one flush.
   ///
-  /// **PT-BR:** Agenda um flush com debounce: se chamado novamente antes
-  /// de [flushDelay] decorrer, o timer é reiniciado e, no fim, apenas um
-  /// flush é executado.
+  /// Two deliberate consequences of NOT re-arming the timer per write
+  /// (which is what a classic debounce would do):
+  ///  1. Performance — `Timer.cancel()` + `Timer()` per write used to cost
+  ///     more than the actual in-memory map update, dominating `write()`'s
+  ///     hot path. Now a burst pays for one timer, total.
+  ///  2. No starvation — the flush happens at most [flushDelay] after the
+  ///     *first* write of a burst, even under continuous writes (e.g. a
+  ///     slider emitting every frame), instead of being pushed forever
+  ///     into the future. The timer callback copies the live map at fire
+  ///     time, so everything written during the window is included.
+  ///
+  /// **PT-BR:** Agenda um flush coalescido: a primeira escrita de um burst
+  /// arma um único [Timer]; cada escrita seguinte dentro de [flushDelay]
+  /// só marca o container como sujo e pega carona no timer já armado —
+  /// um burst continua produzindo exatamente um flush.
+  ///
+  /// Duas consequências deliberadas de NÃO rearmar o timer a cada escrita
+  /// (que é o que um debounce clássico faria):
+  ///  1. Performance — `Timer.cancel()` + `Timer()` por escrita custava
+  ///     mais que a própria atualização do map em memória, dominando o hot
+  ///     path do `write()`. Agora um burst paga um timer, no total.
+  ///  2. Sem starvation — o flush acontece no máximo [flushDelay] depois
+  ///     da *primeira* escrita do burst, mesmo sob escrita contínua (ex.:
+  ///     um slider emitindo a cada frame), em vez de ser empurrado para
+  ///     sempre. O callback do timer copia o map vivo na hora de disparar,
+  ///     então tudo que foi escrito durante a janela é incluído.
   @override
   void scheduleFlush(Map<String, dynamic> snapshot) {
     _dirty = true;
-    _debounceTimer?.cancel();
+    if (_debounceTimer?.isActive ?? false) {
+      // A timer armed by an earlier write in this burst already covers this
+      // write: the flush copies the live map when it fires.
+      return;
+    }
     _debounceTimer = Timer(flushDelay, () {
       if (!_dirty) return;
       _dirty = false;
@@ -675,7 +745,8 @@ class _ContainerIO implements _IOBackend {
       // writeAndFlush()/flushNow() still see failures normally, since they
       // await _enqueueFlush's result directly.
       unawaited(
-        _enqueueFlush(Map<String, dynamic>.of(snapshot)).catchError((
+        _enqueueFlush(Map<String, dynamic>.of(snapshot), fsync: true)
+            .catchError((
           Object error,
           StackTrace stackTrace,
         ) {
@@ -695,32 +766,137 @@ class _ContainerIO implements _IOBackend {
   /// [snapshot] imediatamente, ainda passando pela fila de flush
   /// serializada.
   @override
-  Future<void> flushNow(Map<String, dynamic> snapshot) {
+  Future<void> flushNow(Map<String, dynamic> snapshot, {bool fsync = true}) {
     _debounceTimer?.cancel();
     _dirty = false;
-    return _enqueueFlush(Map<String, dynamic>.of(snapshot));
+    return _enqueueFlush(Map<String, dynamic>.of(snapshot), fsync: fsync);
   }
 
-  Future<void> _enqueueFlush(Map<String, dynamic> snapshot) {
-    final scheduled = _flushChain.then((_) => _writeToDisk(snapshot));
+  /// Snapshot waiting to be written by the next queued flush. While a flush
+  /// is queued (but not yet running), every new flush request simply
+  /// replaces this snapshot instead of enqueuing another full disk write —
+  /// each snapshot is a copy of the *entire* box taken after the caller's
+  /// write, so the newest one always contains every previous caller's data.
+  ///
+  /// **PT-BR:** Snapshot aguardando o próximo flush enfileirado. Enquanto um
+  /// flush está na fila (mas ainda não rodando), cada novo pedido de flush
+  /// apenas substitui este snapshot em vez de enfileirar outra gravação
+  /// completa — cada snapshot é uma cópia do box *inteiro* tirada depois do
+  /// write do caller, então o mais novo sempre contém os dados de todos os
+  /// callers anteriores.
+  Map<String, dynamic>? _pendingSnapshot;
+
+  /// The [Future] shared by every caller coalesced into the next queued
+  /// flush. Completes only after the (single) disk write that covers all of
+  /// them has finished, so `writeAndFlush`'s contract — "my value is on
+  /// disk when this completes" — still holds for each caller.
+  ///
+  /// **PT-BR:** O [Future] compartilhado por todos os callers coalescidos no
+  /// próximo flush enfileirado. Só completa depois que a (única) gravação em
+  /// disco que cobre todos eles terminar, então o contrato do
+  /// `writeAndFlush` — "meu valor está em disco quando isto completar" —
+  /// continua valendo para cada caller.
+  Future<void>? _pendingFlush;
+
+  /// Whether the queued flush must fsync. When callers with different
+  /// durability levels coalesce into the same disk write, the strongest
+  /// requirement wins: one `writeAndFlush` among ten `writeAndSave`s makes
+  /// the shared flush fsync.
+  ///
+  /// **PT-BR:** Se o flush enfileirado precisa de fsync. Quando callers com
+  /// níveis diferentes de durabilidade coalescem na mesma gravação, o
+  /// requisito mais forte vence: um `writeAndFlush` entre dez
+  /// `writeAndSave` faz o flush compartilhado ter fsync.
+  bool _pendingFsync = false;
+
+  Future<void> _enqueueFlush(
+    Map<String, dynamic> snapshot, {
+    required bool fsync,
+  }) {
+    // Coalescing: if a flush is already queued (waiting behind the one
+    // in-flight), don't queue another full write of a nearly identical
+    // snapshot — just swap in the newer one. N concurrent writeAndFlush()
+    // calls collapse into at most one in-flight write plus one queued write,
+    // instead of N sequential full-file writes.
+    //
+    // **PT-BR:** Coalescing: se já existe um flush na fila (esperando atrás
+    // do que está em andamento), não enfileira outra gravação completa de um
+    // snapshot quase idêntico — só troca pelo mais novo. N chamadas
+    // concorrentes de writeAndFlush() colapsam em no máximo uma gravação em
+    // andamento mais uma na fila, em vez de N gravações completas em série.
+    if (_pendingFlush != null) {
+      _pendingSnapshot = snapshot;
+      _pendingFsync = _pendingFsync || fsync;
+      return _pendingFlush!;
+    }
+
+    _pendingSnapshot = snapshot;
+    _pendingFsync = fsync;
+    final scheduled = _flushChain.then((_) {
+      final latest = _pendingSnapshot!;
+      final latestFsync = _pendingFsync;
+      // Clear *before* the disk write starts: callers arriving while the
+      // write is running must start a new queued flush (their data is not
+      // in `latest`), whereas callers arriving before it starts were free
+      // to swap `_pendingSnapshot` and ride along.
+      //
+      // **PT-BR:** Limpa *antes* da gravação começar: callers que chegarem
+      // durante a gravação precisam iniciar um novo flush na fila (os dados
+      // deles não estão em `latest`), enquanto os que chegaram antes dela
+      // começar puderam trocar o `_pendingSnapshot` e pegar carona.
+      _pendingSnapshot = null;
+      _pendingFlush = null;
+      _pendingFsync = false;
+      return _writeToDisk(latest, fsync: latestFsync);
+    });
+    _pendingFlush = scheduled;
     // Keep the chain alive even if this flush fails, so later flushes still
     // wait for it instead of racing ahead.
     _flushChain = scheduled.catchError((_) {});
     return scheduled;
   }
 
-  Future<void> _writeToDisk(Map<String, dynamic> snapshot) async {
+  Future<void> _writeToDisk(
+    Map<String, dynamic> snapshot, {
+    required bool fsync,
+  }) async {
     flushCallCountForTesting++;
     final jsonText = jsonEncode(snapshot);
 
     // 1) Write-ahead: new content always lands on a temp file first. If the
     //    process dies during this write, `container.db` is untouched.
-    await _tmpFile.writeAsString(jsonText, flush: true);
+    //    `flush: fsync` is what separates the two durability tiers:
+    //    `writeAndFlush`/`flushNow` fsync (survives power loss);
+    //    `writeAndSave` only waits for the OS write (survives an app
+    //    crash, like Hive's `put`), which is orders of magnitude cheaper.
+    //
+    //    **PT-BR:** `flush: fsync` é o que separa os dois níveis de
+    //    durabilidade: `writeAndFlush`/`flushNow` fazem fsync (sobrevive a
+    //    queda de energia); `writeAndSave` só espera o write do OS
+    //    (sobrevive a crash do app, como o `put` do Hive), que é ordens de
+    //    magnitude mais barato.
+    await _tmpFile.writeAsString(jsonText, flush: fsync);
 
     // 2) Preserve the last known-good file as a backup before replacing it.
+    //    A rename is a metadata-only operation (no bytes are copied), unlike
+    //    the full byte-for-byte `copy` used previously — this alone removes
+    //    roughly half of the I/O of every flush. Crash-safety is unchanged:
+    //    at any instant either `.db` or `.bak` holds a complete, known-good
+    //    version, and `readInitial` already falls back to `.bak` when `.db`
+    //    is missing or unreadable. Dart's `File.rename` replaces an existing
+    //    destination on every platform, including Windows.
+    //
+    //    **PT-BR:** Preserva o último arquivo íntegro como backup antes de
+    //    substituí-lo. `rename` é operação só de metadata (nenhum byte é
+    //    copiado), ao contrário do `copy` byte a byte usado antes — só isso
+    //    já remove cerca de metade do I/O de cada flush. A crash-safety não
+    //    muda: a qualquer instante `.db` ou `.bak` contém uma versão íntegra,
+    //    e o `readInitial` já cai pro `.bak` quando o `.db` está ausente ou
+    //    ilegível. O `File.rename` do Dart sobrescreve destino existente em
+    //    todas as plataformas, inclusive Windows.
     if (_dbFile.existsSync()) {
       try {
-        await _dbFile.copy(_bakFile.path);
+        await _dbFile.rename(_bakFile.path);
       } catch (_) {
         // Best-effort: a failed backup refresh must not block the swap.
       }
@@ -765,7 +941,7 @@ class _InMemoryIO implements _IOBackend {
   }
 
   @override
-  Future<void> flushNow(Map<String, dynamic> snapshot) async {
+  Future<void> flushNow(Map<String, dynamic> snapshot, {bool fsync = true}) async {
     flushCallCountForTesting++;
     _lastSnapshot = Map<String, dynamic>.of(snapshot);
   }

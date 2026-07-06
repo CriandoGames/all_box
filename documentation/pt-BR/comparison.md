@@ -4,10 +4,12 @@
 
 Uma comparação factual e não-promocional contra outras soluções de
 armazenamento chave-valor para Flutter. Nenhuma delas é "ruim" — resolvem
-para prioridades diferentes. Os números de desempenho abaixo vêm de um
-comparativo próprio (`all_box` vs. soluções populares), rodado localmente;
-trate-os como indicativos de ordem de grandeza, não como benchmark
-oficial de nenhuma das bibliotecas citadas.
+para prioridades diferentes. Os números de desempenho abaixo foram medidos
+**no dispositivo**, pela tela "Comparativo de storage" do app `example/`
+deste repositório (Android, modo profile, mesma sessão e mesmos loops para
+todas as libs) — qualquer pessoa pode reproduzir rodando
+`cd example && flutter run --profile`. Trate-os como indicativos de ordem
+de grandeza, não como benchmark oficial de nenhuma das bibliotecas citadas.
 
 | | `all_box` | GetStorage | Hive | Isar | SharedPreferences |
 |---|---|---|---|---|---|
@@ -15,7 +17,7 @@ oficial de nenhuma das bibliotecas citadas.
 | Code generation | Nenhum | Nenhum | Opcional (adapters de tipo customizado) | Obrigatório (`isar_generator`/`build_runner`) para modelos tipados | Nenhum |
 | Modelo de dados | Chave-valor plano, JSON-encodável | Chave-valor plano | Boxes tipados/`Map`-like, suporta objetos customizados | Banco orientado a objetos, schema tipado, índices e queries | Chave-valor plano, tipos primitivos apenas |
 | Leitura | Síncrona, 100% em memória após `init()` | Síncrona, 100% em memória após `init()` | Síncrona (box já aberta em memória) | Síncrona para leituras simples; queries são assíncronas | Assíncrona (`await SharedPreferences.getInstance()`), cacheada depois |
-| Escrita | Otimista + debounced; `writeAndFlush()` para confirmar em disco | Otimista, sem debounce configurável exposto | Assíncrona por padrão (`box.put`), com `flush()` manual | Assíncrona, com transações explícitas | Assíncrona, uma escrita completa do arquivo por chamada em algumas plataformas |
+| Escrita | Otimista + debounced; `writeAndSave()` (aguarda o OS) e `writeAndFlush()` (fsync) para confirmar em disco | Otimista, sem debounce configurável exposto; nenhuma API espera o disco | Assíncrona por padrão (`box.put`), com `flush()` manual | Assíncrona, com transações explícitas | Assíncrona, uma escrita completa do arquivo por chamada em algumas plataformas |
 | Crash-safety | Write-ahead (`.tmp`) + rename atômico + `.bak` de fallback, documentado | Não documentado publicamente com o mesmo nível de detalhe | WAL/compaction interno (Hive 2), depende da versão | WAL via engine própria (Isar Core, Rust) | Depende inteiramente da implementação nativa da plataforma |
 | `path` de armazenamento | Explícito, obrigatório em `init()` — nunca resolvido internamente | Resolvido internamente (usa `path_provider`/`GetStorage` defaults) | Resolvido pelo chamador (`Hive.init(path)`) | Resolvido pelo chamador (`Isar.open(directory: ...)`) | Resolvido internamente pela plataforma |
 | Reatividade | `AllBoxListenable`/`AllBoxBuilder`, 100% Flutter (`ChangeNotifier`/`ValueListenable`) | `GetBuilder`/`Obx` (acoplado ao ecossistema GetX) | `ValueListenableBuilder` sobre `box.listenable()` | `watchObject`/`watchLazy` (streams) | Nenhuma — precisa de wrapper próprio |
@@ -23,38 +25,56 @@ oficial de nenhuma das bibliotecas citadas.
 | Curva de aprendizado | Baixa | Baixa | Média | Média–alta (schema, queries, codegen) | Baixa |
 | Escopo | Só storage key-value + reatividade | Storage + parte de UI utilities (GetX) | Storage orientado a boxes/objetos | Banco de dados embarcado completo (queries, índices, relações) | Wrapper fino sobre preferências nativas da plataforma |
 
-## Desempenho (1.000 operações, execução local)
+## Desempenho (medido no dispositivo, modo profile)
 
-![Comparativo de desempenho: all_box vs. GetStorage, Hive, Isar e SharedPreferences](../../doc/comparison_benchmark_pt-BR.png)
+![Comparativo de desempenho: all_box vs. Hive e SharedPreferences](../../doc/comparison_benchmark_pt-BR.png)
 
-| Solução | Escrita (memória) | Leitura (síncrona) | Escrita durável (disco) |
+Android (build AE3A.240806.036), modo profile, tela "Comparativo de
+storage" do app `example/`, mediana de 5 rodadas (memória) / 3 (disco).
+Custo médio por operação (menor é melhor):
+
+| Cenário | all_box | Hive | SharedPreferences |
 | --- | --- | --- | --- |
-| **all_box** | 5 ms | 2 ms | 1.200 ms |
-| GetStorage | 6 ms | 2 ms | 1.100 ms |
-| Hive | 15 ms | 3 ms | 15 ms |
-| Isar | 8 ms | 5 ms | 8 ms |
-| SharedPreferences | 120 ms | 40 ms | 120 ms |
+| Escrita otimista (memória), 10.000 ops | **0,3 µs** | 5,3 µs | 87,2 µs |
+| Leitura síncrona, 10.000 ops | **0,2 µs** | 0,9 µs | 0,2 µs |
+| Escrita confirmada (sem fsync), 200 ops | 28,9 ms | **5,6 ms** | 30,1 ms |
+| Escrita durável com fsync, 200 ops | 52,6 ms | — sem API | — sem API |
+| Burst de 200 `write()` + 1 flush | **323,7 µs** | 4.532,5 µs | 25.199,0 µs |
 
 Como ler esta tabela:
 
-- **Escrita (memória)** e **Leitura (síncrona)** medem só o caminho que não
-  toca disco — é aqui que `all_box` e `GetStorage` ganham por escreverem e
-  lerem direto de um `Map` em memória, sem overhead de schema/índice.
-- **Escrita durável (disco)** mede o custo de garantir que cada uma das
-  1.000 escritas está fisicamente no disco antes de seguir. `all_box` e
-  `GetStorage` pagam esse preço por reescreverem o arquivo inteiro do
-  container a cada confirmação — seguro, mas caro se você confirmar disco
-  a cada escrita em vez de usar o caminho otimista/debounced. Hive e Isar
-  são mais baratos aqui porque usam um formato de log/WAL que só acrescenta
-  ao arquivo, sem reescrever tudo. Na prática, o caminho recomendado do
-  `all_box` é `write()` otimista (que é o número "memória" acima, não o de
-  disco) com `writeAndFlush()`/`flushNow()` reservado para os poucos
-  momentos em que você precisa de uma garantia real e imediata (ex.:
-  `AppLifecycleState.paused`).
-- **SharedPreferences** é consistentemente mais lento nas três colunas
-  porque cada leitura/escrita cruza um canal de plataforma (`MethodChannel`)
-  — overhead que `all_box`, `GetStorage`, `Hive` e `Isar` evitam ao manter o
-  estado quente em memória Dart.
+- **Escrita otimista e leitura** são os pontos fortes do `all_box`: lookup
+  e escrita diretos em um `HashMap` em memória — ~17× mais rápido que o
+  Hive na escrita, empate técnico com SharedPreferences na leitura.
+- **Burst + 1 flush** é o cenário do uso real do `all_box` (escrita
+  otimista com debounce, um único flush no fim): 200 escritas persistidas
+  em 64 ms no total, ~14× mais rápido que Hive e ~78× que
+  SharedPreferences no mesmo loop.
+- **Escrita confirmada** usa o contrato de "persistido" de cada lib, sem
+  fsync em nenhuma (`writeAndSave()` no `all_box`, `put()` no Hive,
+  `setInt()` no SharedPreferences). O Hive vence esta linha, e o motivo é
+  estrutural: ele *anexa* alguns bytes num log, enquanto o `all_box`
+  regrava o arquivo do container com write-ahead + rename atômico —
+  mais operações de arquivo por confirmação, em troca de um arquivo que
+  nunca fica meio-escrito. Se você confirma disco a cada escrita em um
+  loop, o Hive é melhor; o caminho recomendado do `all_box` é o
+  otimista/debounced (linhas 1 e 5).
+- **Escrita durável com fsync** só tem uma barra porque só o `all_box`
+  oferece essa garantia (`writeAndFlush()`): quando o `Future` completa, o
+  dado sobrevive a queda de energia, não só a crash do app. Nenhuma das
+  outras tem API equivalente.
+- **GetStorage** não está na tabela medida por um motivo técnico: o
+  `Future` do `write()` dele resolve após agendar um microtask, sem
+  esperar nem o write bufferizado do OS — não existe API no GetStorage que
+  espere o dado chegar ao disco, então não há nada comparável a medir nas
+  linhas de confirmação/durabilidade. A comparação qualitativa abaixo
+  continua cobrindo ele.
+- **Isar** ficou fora da medição on-device (exige engine nativa + codegen,
+  que complicariam o app example); a comparação qualitativa abaixo segue
+  valendo.
+- Números de debug mode não servem para comparação — o `all_box`, em
+  particular, paga em debug um guard de `jsonEncode` por `write()` que não
+  existe em release/profile.
 
 ## GetStorage
 

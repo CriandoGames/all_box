@@ -17,6 +17,15 @@ dependencies:
   # "Erros de path/plugin evitados".
   path_provider: ^2.1.0
 
+  # Competitors below exist ONLY for the on-device benchmark screen
+  # (lib/benchmark/). The `all_box` package itself stays dependency-free.
+  #
+  # **PT-BR:** Os concorrentes abaixo existem SÓ para a tela de benchmark
+  # no dispositivo (lib/benchmark/). O pacote `all_box` em si continua
+  # sem dependências.
+  hive: ^2.2.3
+  shared_preferences: ^2.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

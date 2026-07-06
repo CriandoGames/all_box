@@ -17,14 +17,17 @@
 // 3. End-to-end flush latency: `N` sequential `writeAndFlush()` calls to the
 //    SAME key, timed individually. Because flushes are serialized (see
 //    README), each call here waits for its own real `write-ahead tmp write
-//    + backup copy + atomic rename` round trip to finish — this is the
+//    + backup rename + atomic rename` round trip to finish — this is the
 //    realistic "durable write" cost, disk included.
 // 4. Debounce effectiveness: `N` rapid `write()` calls followed by a single
 //    `flushNow()`, timed as one unit, to illustrate the savings versus (3).
 //
 // Run with:
 //   flutter pub get
-//   dart run benchmark/benchmark.dart
+//   flutter test benchmark/benchmark_test.dart
+//
+// (`dart run` does not work here: the package imports
+// `flutter/foundation`, which the plain Dart VM cannot resolve.)
 //
 // Results are printed as ops/sec and average µs/op. They are only
 // meaningful relative to each other, on your machine, on your disk — do not
@@ -111,7 +114,7 @@ Future<void> _benchmarkDurableWrites(String basePath) async {
   stopwatch.stop();
 
   _report(
-    'writeAndFlush() (tmp write + backup copy + atomic rename, per call)',
+    'writeAndFlush() (tmp write + backup rename + atomic rename, per call)',
     kFlushOpCount,
     stopwatch.elapsed,
   );

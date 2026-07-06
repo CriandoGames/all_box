@@ -27,7 +27,6 @@
 - [API](#-api)
 - [Decisões de Design](#️-decisões-de-design)
 - [Limitações conhecidas](#️-limitações-conhecidas-documentadas-não-escondidas)
-- [Benchmark próprio](#-resultado-do-benchmark-execução-local)
 - [Comparação](#-comparação)
 - [Quando usar (e quando não usar)](#-quando-usar-e-quando-não-usar)
 - [Testes](#-testes)
@@ -289,8 +288,12 @@ de design deliberada, não um descuido — veja a seção abaixo.
 - **Fila de flush serializada.** Nunca há duas escritas concorrentes no
   mesmo arquivo, mesmo se `flushNow()`/`writeAndFlush()` for chamado com um
   flush debounced ainda em andamento.
-- **Benchmark próprio.** Números de performance medidos e mantidos neste
-  repositório; veja `benchmark/` e a seção [Comparação](#-comparação).
+- **Benchmark reproduzível.** Números de performance medidos no
+  dispositivo e mantidos neste repositório — veja a seção
+  [Comparação](#-comparação); reproduza você mesmo pelo app example
+  (`cd example && flutter run --profile`, depois toque no ícone ⚡) ou rode
+  o micro-benchmark do pacote com
+  `flutter test benchmark/benchmark_test.dart`.
 - **Aviso de serialização em debug, não exceção.** `write()`/`writeAndFlush()`
   chamam `jsonEncode` no valor na hora, só em debug, e emitem um
   `debugPrint` em vermelho se ele não for serializável — mas nunca lançam
@@ -316,34 +319,6 @@ de design deliberada, não um descuido — veja a seção abaixo.
   Dart; teste esse cenário especificamente se seu app roda em Windows
   desktop.
 
-## 📊 Resultado do Benchmark (execução local)
-
-Números de uma execução real em `benchmark/benchmark.dart` (Dart 3.9.2 stable,
-Windows 11 Pro), confirmando o custo de cada caminho descrito acima —
-leitura/escrita em memória são ordens de magnitude mais rápidas que qualquer
-caminho que toque disco, e o debounce reduz drasticamente o custo de bursts
-de escrita comparado a confirmar cada uma no disco individualmente:
-
-![Gráfico de benchmark do AllBox: tempo médio de read/write em memória, write debounced e writeAndFlush durável](doc/benchmark_result_simple.png)
-
-> **µs × ms:** o gráfico usa a unidade mais legível para cada barra —
-> **µs** (microssegundo, 1 milionésimo de segundo) para as três primeiras
-> operações, que são só memória, e **ms** (milissegundo, 1 milésimo de
-> segundo = 1.000 µs) só para `writeAndFlush()`, que realmente toca o disco
-> e por isso é ordens de magnitude mais lenta. Não é erro de unidade — é
-> zoom automático para cada barra continuar legível.
-
-| Operação | Throughput | Latência média |
-| --- | --- | --- |
-| `read<int>()` em memória | 1.495.886 ops/s | 0,67 µs/op |
-| `write()` em memória (otimista) | 92.674 ops/s | 10,79 µs/op |
-| 200× `write()` debounced + 1 `flushNow()` | 36.403 ops/s | 27,47 µs/op |
-| `writeAndFlush()` (tmp + backup + rename, por chamada) | 187 ops/s | 5,34 ms/op (= 5.340,29 µs/op) |
-
-Como o próprio `benchmark/benchmark.dart` documenta, esses números só valem
-para o ambiente onde eu testei — rode `dart run benchmark/benchmark.dart`
-no seu próprio ambiente para medir na sua máquina/disco.
-
 ## ⚖️ Comparação
 
 | | `all_box` | GetStorage | Hive | Isar | SharedPreferences |
@@ -353,6 +328,13 @@ no seu próprio ambiente para medir na sua máquina/disco.
 | Crash-safety documentada | Write-ahead + rename atômico + `.bak` | Não documentada no mesmo nível | WAL/compaction interno | WAL via engine própria | Depende da plataforma |
 | Suporte a Web | Não (v1) | Sim | Sim | Sim | Sim |
 | Escopo | Só key-value + reatividade | Storage + utils de UI (GetX) | Storage orientado a boxes | Banco de dados completo | Wrapper de plataforma |
+
+![Comparativo de desempenho: all_box vs. Hive e SharedPreferences, medido no dispositivo em modo profile](doc/comparison_benchmark_pt-BR.png)
+
+Medido no dispositivo (Android, modo profile) pela tela "Comparativo de
+storage" do app `example/` — mediana de várias rodadas, mesma sessão e
+mesmos loops para todas as libs. A linha de fsync só tem uma barra porque
+só o `all_box` oferece essa garantia (`writeAndFlush()`).
 
 `all_box` propositalmente não tenta ser um banco de dados nem resolver seu
 próprio `path` — isso é uma escolha de design, não uma lacuna.

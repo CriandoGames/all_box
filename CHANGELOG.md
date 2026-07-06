@@ -1,3 +1,47 @@
+## 0.3.0
+
+Performance release — additive API only, no new dependencies for the
+package itself, on-disk format unchanged.
+
+- **New `writeAndSave()`:** intermediate durability tier. Completes once
+  the OS write finishes (survives an app crash — the same guarantee class
+  as `Hive.put`), without the fsync cost of `writeAndFlush()` (the only
+  tier that survives power loss). Keeps the full write-ahead +
+  atomic-rename pipeline. Durability ladder: `write()` →
+  `writeAndSave()` → `writeAndFlush()`. When both tiers coalesce into the
+  same flush, the strongest requirement wins.
+
+- **Flush path ~2× less I/O:** the pre-flush backup (`.db` → `.bak`) is now
+  a metadata-only `rename` instead of a full byte-for-byte `copy`.
+  Crash-safety guarantees are unchanged: at any instant either `.db` or
+  `.bak` holds a complete known-good version, and `init()` already falls
+  back to `.bak`.
+- **Flush coalescing:** N concurrent `writeAndFlush()` calls now collapse
+  into at most 2 real disk writes (one in-flight + one queued) instead of N
+  sequential full-file writes. Each caller's `Future` still only completes
+  once its value is durably on disk.
+- **`write()` hot path:** the debounce timer is now armed once per burst
+  instead of being cancelled and recreated on every `write()` (the timer
+  churn used to cost more than the in-memory map update itself). Side
+  benefit: continuous writes can no longer starve the flush — it now fires
+  at most `flushDelay` after the *first* write of a burst.
+- New test suite `test/flush_performance_test.dart` (21 tests): db/bak
+  invariants, simulated crash windows, coalescing contracts, timer
+  semantics, durability round-trips, and randomized mutation stress.
+- New on-device benchmark screen in the example app (`example/lib/benchmark/`)
+  comparing all_box vs Hive and SharedPreferences with the same loops in
+  the same session (multiple rounds, median reported) — including honest
+  per-lib durability-guarantee caveats. Competitor dependencies live only
+  in the example app. GetStorage is not in the measured comparison: its
+  `write()` Future resolves without waiting for any disk write (there is
+  no API in it that does), so there is nothing comparable to measure; it
+  remains covered in the qualitative comparison docs.
+- Updated comparison docs and charts with numbers measured on a real
+  device in profile mode.
+- `benchmark/benchmark_test.dart`: the package benchmark now runs via
+  `flutter test benchmark/benchmark_test.dart` (`dart run` never worked —
+  the package imports `flutter/foundation`).
+
 ## 0.2.1
 
 Documentation-only release — no code changes to `lib/`, no breaking

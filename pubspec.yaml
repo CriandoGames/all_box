@@ -2,7 +2,7 @@ name: all_box
 description: >
   Synchronous, lightweight key-value storage for Flutter with crash-safe
   writes (write-ahead + atomic rename) and a pure-Flutter reactive layer.
-version: 0.2.1
+version: 0.3.0
 homepage: https://github.com/CriandoGames/all_box
 repository: https://github.com/CriandoGames/all_box
 issue_tracker: https://github.com/CriandoGames/all_box/issues

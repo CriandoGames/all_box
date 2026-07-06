@@ -26,7 +26,6 @@
 - [API](#-api)
 - [Design decisions](#️-design-decisions)
 - [Known limitations](#️-known-limitations-documented-not-hidden)
-- [Own benchmark](#-benchmark-results-local-run)
 - [Comparison](#-comparison)
 - [When to use it (and when not to)](#-when-to-use-it-and-when-not-to)
 - [Testing](#-testing)
@@ -302,8 +301,12 @@ deliberate design choice, not an oversight — see the section below.
 - **Serialized flush queue.** There are never two concurrent writes on the
   same file, even if `flushNow()`/`writeAndFlush()` is called while a
   debounced flush is still in flight.
-- **Own benchmark.** Performance numbers measured and maintained in this
-  repository; see `benchmark/` and the [Comparison](#-comparison) section.
+- **Reproducible benchmark.** Performance numbers measured on-device and
+  maintained in this repository — see the [Comparison](#-comparison)
+  section; reproduce them yourself with the example app
+  (`cd example && flutter run --profile`, then tap the ⚡ icon) or run the
+  package's own micro-benchmark with
+  `flutter test benchmark/benchmark_test.dart`.
 - **Debug-only serialization warning, not an exception.**
   `write()`/`writeAndFlush()` call `jsonEncode` on the value on the spot,
   debug-only, and emit a red `debugPrint` if it isn't serializable — but
@@ -328,34 +331,6 @@ deliberate design choice, not an oversight — see the section below.
   Windows, behavior can vary between Dart SDK versions; test this scenario
   specifically if your app runs on Windows desktop.
 
-## 📊 Benchmark results (local run)
-
-Numbers from a real run of `benchmark/benchmark.dart` (Dart 3.9.2 stable,
-Windows 11 Pro), confirming the cost of each path described above —
-in-memory reads/writes are orders of magnitude faster than any path that
-touches disk, and debouncing drastically cuts the cost of write bursts
-compared to confirming each one to disk individually:
-
-![AllBox benchmark chart: average read/write in memory, debounced write, and durable writeAndFlush](doc/benchmark_result_simple.png)
-
-> **µs × ms:** the chart uses the most readable unit for each bar — **µs**
-> (microsecond, one millionth of a second) for the first three operations,
-> which are memory-only, and **ms** (millisecond, one thousandth of a
-> second = 1,000 µs) only for `writeAndFlush()`, which actually touches
-> disk and is therefore orders of magnitude slower. It's not a unit error
-> — it's automatic zoom so every bar stays readable.
-
-| Operation | Throughput | Average latency |
-| --- | --- | --- |
-| In-memory `read<int>()` | 1,495,886 ops/s | 0.67 µs/op |
-| In-memory `write()` (optimistic) | 92,674 ops/s | 10.79 µs/op |
-| 200× debounced `write()` + 1 `flushNow()` | 36,403 ops/s | 27.47 µs/op |
-| `writeAndFlush()` (tmp + backup + rename, per call) | 187 ops/s | 5.34 ms/op (= 5,340.29 µs/op) |
-
-As `benchmark/benchmark.dart` itself documents, these numbers only hold for
-the environment I tested on — run `dart run benchmark/benchmark.dart` in
-your own environment to measure on your own machine/disk.
-
 ## ⚖️ Comparison
 
 | | `all_box` | GetStorage | Hive | Isar | SharedPreferences |
@@ -365,6 +340,13 @@ your own environment to measure on your own machine/disk.
 | Documented crash-safety | Write-ahead + atomic rename + `.bak` | Not documented at the same level | Internal WAL/compaction | WAL via its own engine | Platform-dependent |
 | Web support | No (v1) | Yes | Yes | Yes | Yes |
 | Scope | Key-value + reactivity only | Storage + some UI utils (GetX) | Box-oriented storage | Full database | Platform wrapper |
+
+![Performance comparison: all_box vs. Hive and SharedPreferences, measured on-device in profile mode](doc/comparison_benchmark_en.png)
+
+Measured on-device (Android, profile mode) via the example app's "Storage
+comparison" screen — median of multiple rounds, same session and same
+loops for every lib. The fsync row has a single bar because only `all_box`
+offers that guarantee (`writeAndFlush()`).
 
 `all_box` intentionally doesn't try to be a database or resolve its own
 `path` — that's a design choice, not a gap.
