@@ -1,7 +1,7 @@
-<h1 align="center">All Box</h1>
+<h1 align="center">all_box</h1>
 
 <p align="center">
-  💡 Armazenamento chave-valor síncrono, leve e rápido para Flutter — com escrita crash-safe e camada reativa 100% Flutter.
+🇧🇷 <a href="https://github.com/CriandoGames/all_box/blob/main/README.pt-BR.md">Português</a> | 🇺🇸 English
 </p>
 
 <p align="center">
@@ -9,69 +9,82 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/testes-18-brightgreen" alt="18 testes">
+  <img src="https://img.shields.io/badge/tests-19-brightgreen" alt="19 tests">
 </p>
 
----
+<p align="center">
+💡 Synchronous, lightweight and fast key-value storage for Flutter — with crash-safe writes and a pure-Flutter reactive layer.
+</p>
 
-## 🚀 Descrição do Projeto
+## Table of contents
 
-**AllBox** é um armazenamento chave-valor para Flutter, construído em torno
-de quatro pilares:
+- [Features](#-features)
+- [Installing](#-installing)
+- [Example App](#-example-app)
+- [Features in detail](#️-features-in-detail)
+- [Usage examples](#-usage-examples)
+- [API](#-api)
+- [Design decisions](#️-design-decisions)
+- [Known limitations](#️-known-limitations-documented-not-hidden)
+- [Own benchmark](#-benchmark-results-local-run)
+- [Comparison](#-comparison)
+- [When to use it (and when not to)](#-when-to-use-it-and-when-not-to)
+- [Testing](#-testing)
+- [Documentation](#-documentation)
+- [Other packages by us](#-other-packages-by-us)
 
-- **Camada reativa 100% Flutter.** `AllBoxListenable` e `AllBoxBuilder` são
-  construídos diretamente sobre `ChangeNotifier` e `ValueListenable` — sem
-  nenhuma dependência externa de gerenciamento de estado.
-- **Leituras síncronas.** Depois do `init()`, todo `read<T>()` é síncrono —
-  sem `Future`, sem `FutureBuilder`, sem espera de I/O no caminho de leitura.
-- **Crash-safety de verdade.** Toda escrita passa por um arquivo `.tmp` e só
-  então um rename atômico substitui o arquivo principal (`.db`); um `.bak` do
-  último estado bom é mantido à parte, com fallback automático em dois
-  estágios (erro de decodificação UTF-8 e erro de `jsonDecode`).
-- **`path` explícito, nunca resolvido internamente.** `AllBox` nunca importa
-  `path_provider` nem resolve diretório algum — quem chama `init()` decide
-  onde o container vive. Isso evita, por construção, os bugs de resolução de
-  plugin/Activity que afetam bibliotecas que resolvem o path por padrão.
+## 🚀 Features
 
-Parte da família de pacotes open-source `all_*` ao lado
-de [`all_validations_br`](https://pub.dev/packages/all_validations_br)
-(validações brasileiras, utilitários e criptografia) e `all_image_compress`
-(compressão de imagem).
+- 🪶 **100% synchronous reads.** After `init()`, every `read<T>()` is
+  synchronous — no `Future`, no `FutureBuilder`, no I/O wait on the read
+  path.
+- 🔌 **100% Flutter reactive layer.** `AllBoxListenable` and `AllBoxBuilder`
+  are built directly on `ChangeNotifier` and `ValueListenable` — no external
+  state-management dependency at all.
+- 🛡️ **Real crash-safety.** Every write lands on a `.tmp` file first, then
+  an atomic rename replaces the main file (`.db`); a `.bak` of the last good
+  state is kept separately, with automatic two-stage fallback (UTF-8
+  decoding errors and `jsonDecode` errors).
+- 📍 **Explicit `path`, never resolved internally.** `AllBox` never imports
+  `path_provider` nor resolves any directory — whoever calls `init()`
+  decides where the container lives. This avoids, by construction, the
+  plugin/Activity resolution bugs that affect libraries that resolve the
+  path by default.
+- ⚡ **Optimistic, debounced writes**, with `writeAndFlush()`/`flushNow()`
+  for the moments you need a real, immediate on-disk guarantee.
+- 🧪 **In-memory backend for testing.**
+  `AllBox.initWithMemoryBackendForTesting()` runs with no real I/O and no
+  real `Timer`, safe for `testWidgets`.
 
----
+Part of the `all_*` family of open-source packages alongside
+[`all_validations_br`](https://pub.dev/packages/all_validations_br)
+(Brazilian validations, utilities and encryption) and `all_image_compress`
+(image compression).
 
-## 📦 Instalação
+## 📦 Installing
 
-Adicione ao seu `pubspec.yaml`:
+```
+flutter pub add all_box
+```
 
 ```yaml
 dependencies:
-  all_box: ^0.1.0
+  all_box: ^0.2.1
 ```
-
-Em seguida:
-
-```bash
-flutter pub get
-```
-
-E importe no seu código:
 
 ```dart
 import 'package:all_box/all_box.dart';
 ```
 
----
+## 📱 Example App
 
-## 📱 App de Exemplo
-
-O diretório `example/` contém um app Flutter interativo (`CounterPage`) que
-demonstra toda a superfície pública usada no dia a dia: `write()` otimista
-vs. `writeAndFlush()`, `AllBoxBuilder<T>` reativo, `listenAll` para efeitos
-colaterais globais (um `SnackBar`) e `flushNow()` disparado em
+The `example/` directory contains an interactive Flutter app (`CounterPage`)
+demonstrating the whole day-to-day public surface: optimistic `write()` vs.
+`writeAndFlush()`, a reactive `AllBoxBuilder<T>`, `listenAll` for global
+side effects (a `SnackBar`), and `flushNow()` fired on
 `AppLifecycleState.paused`.
 
-Para rodar:
+To run it:
 
 ```bash
 cd example
@@ -79,11 +92,9 @@ flutter pub get
 flutter run
 ```
 
----
+## ⚙️ Features in detail
 
-## ⚙️ Funcionalidades
-
-### Inicialização
+### Initialization
 
 ```dart
 import 'package:all_box/all_box.dart';
@@ -92,8 +103,8 @@ import 'package:path_provider/path_provider.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // AllBox nunca resolve o próprio diretório — quem resolve é você, depois
-  // que o binding estiver pronto. Qualquer estratégia de path funciona.
+  // AllBox never resolves its own directory — you do, after the binding is
+  // ready. Any path strategy works.
   final dir = await getApplicationDocumentsDirectory();
   await AllBox.init('my_container', path: dir.path);
 
@@ -101,7 +112,7 @@ Future<void> main() async {
 }
 ```
 
-### Seed de dados no primeiro run (`initialData`)
+### Seeding data on first run (`initialData`)
 
 ```dart
 await AllBox.init(
@@ -114,45 +125,45 @@ await AllBox.init(
 );
 ```
 
-`initialData` só é aplicado em um first-run de verdade — quando o container
-ainda não tem `<container>.db`/`<container>.bak` no disco. É persistido
-imediatamente (não espera o debounce), então sobrevive a um crash logo após
-o primeiro lançamento do app. Se o container já existia antes — mesmo que
-como um `{}` vazio deixado por um `erase()` anterior — `initialData` é
-ignorado e o que está em disco prevalece.
+`initialData` only applies on a genuine first run — when the container
+doesn't yet have `<container>.db`/`<container>.bak` on disk. It's persisted
+immediately (it doesn't wait for the debounce), so it survives a crash
+right after the app's first launch. If the container already existed
+before — even as an empty `{}` left by a previous `erase()` — `initialData`
+is ignored and whatever is on disk wins.
 
-### Leitura e escrita (toda leitura é síncrona)
+### Reading and writing (every read is synchronous)
 
 ```dart
 final box = AllBox('my_container');
 
-box.write('name', 'Carlos');           // otimista: memória + listeners
-                                        // atualizam na hora, o disco segue
-                                        // ~100ms depois (debounced)
+box.write('name', 'Carlos');           // optimistic: memory + listeners
+                                        // update immediately, disk follows
+                                        // ~100ms later (debounced)
 
 String? name = box.read<String>('name');
 String safeName = box.readOrDefault<String>('name', 'anonymous');
 
-await box.writeAndFlush('name', 'Carlos'); // espera o disco confirmar
+await box.writeAndFlush('name', 'Carlos'); // waits for disk confirmation
 
 box.remove('name');
-box.erase(); // limpa tudo e notifica todos os listeners que existiam
+box.erase(); // clears everything and notifies every listener that existed
 
-await box.flushNow(); // força um flush agora, ex.: em AppLifecycleState.paused
+await box.flushNow(); // forces a flush now, e.g. on AppLifecycleState.paused
 ```
 
-### Escutando mudanças
+### Listening for changes
 
 ```dart
-box.listenKey('name', () => print('name mudou'));
+box.listenKey('name', () => print('name changed'));
 box.removeListenKey('name', callback);
 
-final dispose = box.listenAll(() => print('container mudou'));
-// depois
+final dispose = box.listenAll(() => print('container changed'));
+// later
 dispose();
 ```
 
-### Widgets reativos, sem dependências externas de gerenciamento de estado
+### Reactive widgets, no external state-management dependency
 
 ```dart
 AllBoxBuilder<int>(
@@ -161,7 +172,7 @@ AllBoxBuilder<int>(
 )
 ```
 
-Ou construa seu próprio `ValueListenable` com `AllBoxListenable<T>`:
+Or build your own `ValueListenable` with `AllBoxListenable<T>`:
 
 ```dart
 final counter = AllBoxListenable<int>('counter');
@@ -171,10 +182,9 @@ ValueListenableBuilder<int?>(
 );
 ```
 
-### Helper `.val()` sem DI (opcional)
+### DI-free `.val()` helper (optional)
 
-Um mini state-manager opt-in, sem qualquer acoplamento de injeção de
-dependência:
+An opt-in mini state-manager, with no dependency-injection coupling at all:
 
 ```dart
 final darkMode = 'darkMode'.val(false);
@@ -182,26 +192,24 @@ print(darkMode.value);
 darkMode.value = true;
 ```
 
----
+## 🧪 Usage examples
 
-## 🧪 Exemplos de Uso
-
-### Valor com fallback seguro
+### Value with a safe fallback
 
 ```dart
 final box = AllBox('settings');
 final theme = box.readOrDefault<String>('theme', 'light');
-// Retorna 'light' se a chave 'theme' ainda não existir
+// Returns 'light' if the 'theme' key doesn't exist yet
 ```
 
-### Escrita otimista vs. escrita confirmada
+### Optimistic write vs. confirmed write
 
 ```dart
-box.write('score', 100);              // memória atualizada na hora
-await box.writeAndFlush('score', 100); // só retorna após confirmar no disco
+box.write('score', 100);              // memory updated immediately
+await box.writeAndFlush('score', 100); // only returns after disk confirms
 ```
 
-### Reagindo a uma única chave dentro de um widget
+### Reacting to a single key inside a widget
 
 ```dart
 class DarkModeSwitch extends StatelessWidget {
@@ -220,25 +228,25 @@ class DarkModeSwitch extends StatelessWidget {
 }
 ```
 
-### Limpando um container e reagindo globalmente
+### Clearing a container and reacting globally
 
 ```dart
-final dispose = box.listenAll(() => print('algo mudou em "settings"'));
+final dispose = box.listenAll(() => print('something changed in "settings"'));
 
-box.erase(); // dispara o listener acima uma única vez
+box.erase(); // fires the listener above exactly once
 
 dispose();
 ```
 
-### Introspecção do container
+### Container introspection
 
 ```dart
 box.hasData('theme');   // true / false
-box.getKeys();          // todas as chaves gravadas
-box.getValues();        // todos os valores gravados
+box.getKeys();          // every key ever written
+box.getValues();        // every value ever written
 ```
 
-### Persistindo o estado do app ao ser pausado
+### Persisting app state when paused
 
 ```dart
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
@@ -251,130 +259,146 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 }
 ```
 
----
-
 ## 📚 API
 
-| Member | Descrição |
+| Member | Description |
 | --- | --- |
-| `AllBox([container])` | Factory constructor; retorna um singleton por nome de container. |
-| `static AllBox.init(container, {required path, flushDelay, initialData})` | Carrega o `container` do disco para a memória. `path` é obrigatório — veja abaixo. `initialData` semeia valores default, mas só num first-run de verdade. |
-| `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Leituras síncronas. |
-| `void write(key, value)` | Escrita otimista + debounced. Em debug, avisa (via `debugPrint` em vermelho) se `value` não for JSON-encodável, mas nunca lança exceção. |
-| `Future<void> writeAndFlush(key, value)` | Escreve e espera a confirmação em disco. Mesmo aviso de serialização de `write()`. |
-| `void remove(key)` / `void erase()` | Remove uma chave / limpa tudo (`erase()` notifica os listeners de todas as chaves que existiam). |
-| `Future<void> flushNow()` | Força um flush imediato, ignorando a janela de debounce. |
-| `listenKey(key, cb)` / `removeListenKey(key, cb)` | Listeners por chave. |
-| `VoidCallback listenAll(cb)` | Listener global; retorna uma função de dispose. |
-| `hasData(key)`, `getKeys()`, `getValues()` | Introspecção. |
-| `AllBoxListenable<T>` | `ChangeNotifier` + `ValueListenable<T?>` para uma chave. |
-| `AllBoxBuilder<T>` | Widget que reconstrói quando `keyName` muda. |
-| `'key'.val<T>(default)` | Handle opcional de mini state-manager sem DI. |
+| `AllBox([container])` | Factory constructor; returns a singleton per container name. |
+| `static AllBox.init(container, {required path, flushDelay, initialData})` | Loads `container` from disk into memory. `path` is required — see below. `initialData` seeds default values, but only on a genuine first run. |
+| `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Synchronous reads. |
+| `void write(key, value)` | Optimistic, debounced write. In debug mode, warns (via a red `debugPrint`) if `value` isn't JSON-encodable, but never throws. |
+| `Future<void> writeAndFlush(key, value)` | Writes and waits for disk confirmation. Same serialization warning as `write()`. |
+| `void remove(key)` / `void erase()` | Removes a key / clears everything (`erase()` notifies every previously-existing key's listeners). |
+| `Future<void> flushNow()` | Forces an immediate flush, bypassing the debounce window. |
+| `listenKey(key, cb)` / `removeListenKey(key, cb)` | Per-key listeners. |
+| `VoidCallback listenAll(cb)` | Global listener; returns a dispose function. |
+| `hasData(key)`, `getKeys()`, `getValues()` | Introspection. |
+| `AllBoxListenable<T>` | `ChangeNotifier` + `ValueListenable<T?>` for a single key. |
+| `AllBoxBuilder<T>` | Widget that rebuilds when `keyName` changes. |
+| `'key'.val<T>(default)` | Optional DI-free mini state-manager handle. |
 
-### Por que `path` é um parâmetro obrigatório de `init()`?
+### Why is `path` a required parameter of `init()`?
 
-`AllBox` **nunca** importa `path_provider` (nem resolve diretório algum)
-internamente. Quem chama sempre decide onde o container vive. É uma escolha
-de design deliberada, não um descuido — veja a seção abaixo.
+`AllBox` **never** imports `path_provider` (nor resolves any directory)
+internally. The caller always decides where the container lives. It's a
+deliberate design choice, not an oversight — see the section below.
 
----
+## 🛠️ Design decisions
 
-## 🛠️ Decisões de Design
+- **Explicit, required `path` in `init()`.** `all_box` never resolves any
+  directory internally — whoever calls `init()` always supplies `path`,
+  avoiding any plugin resolution inside the library.
+- **`initialData` only applies on a genuine first run.** The check is done
+  via the presence of `<container>.db`/`<container>.bak` on disk, not
+  in-memory state — a container emptied by `erase()` still has a persisted
+  `{}`, so it's not considered a "first run" and the seed isn't reapplied
+  over it.
+- **Crash-safety via write-ahead + atomic rename.** Every disk write lands
+  on a `.tmp` file first, then an atomic rename replaces the main file
+  (`.db`); a `.bak` of the last good state is kept separately.
+- **Two-stage read error handling.** UTF-8 decoding errors and
+  `jsonDecode` errors are treated as distinct failure stages, each falling
+  back to `.bak` before giving up and starting empty.
+- **Serialized flush queue.** There are never two concurrent writes on the
+  same file, even if `flushNow()`/`writeAndFlush()` is called while a
+  debounced flush is still in flight.
+- **Own benchmark.** Performance numbers measured and maintained in this
+  repository; see `benchmark/` and the [Comparison](#-comparison) section.
+- **Debug-only serialization warning, not an exception.**
+  `write()`/`writeAndFlush()` call `jsonEncode` on the value on the spot,
+  debug-only, and emit a red `debugPrint` if it isn't serializable — but
+  never throw or block the write (same permissive behavior as
+  `GetStorage`). The value is still written to memory normally; if it
+  truly can't be encoded, the failure only resurfaces silently deep inside
+  the flush.
+- **No Web support in this v1** (see limitations below).
 
-- **`path` explícito e obrigatório em `init()`.** O `all_box` nunca resolve
-  diretório algum internamente — quem chama `init()` sempre informa o
-  `path`, evitando qualquer resolução de plugin dentro da lib.
-- **`initialData` só se aplica em first-run de verdade.** A checagem é feita
-  pela existência de `<container>.db`/`<container>.bak` em disco, não pelo
-  conteúdo em memória — um container esvaziado por `erase()` ainda tem um
-  `{}` persistido, então não é considerado "primeiro run" e o seed não é
-  reaplicado por cima dele.
-- **Crash-safety com write-ahead + rename atômico.** Toda escrita em disco
-  passa por um arquivo `.tmp` e só então um rename atômico substitui o
-  arquivo principal (`.db`); um `.bak` do último estado bom é mantido à
-  parte.
-- **Tratamento de leitura em dois estágios.** Erros de decodificação UTF-8 e
-  erros de `jsonDecode` são tratados como estágios/pontos de falha
-  distintos, cada um com fallback para o `.bak` antes de desistir e começar
-  vazio.
-- **Fila de flush serializada.** Nunca há duas escritas concorrentes no
-  mesmo arquivo, mesmo se `flushNow()`/`writeAndFlush()` for chamado com um
-  flush debounced ainda em andamento.
-- **Benchmark próprio.** Números de performance medidos e mantidos neste
-  repositório; veja `benchmark/`.
-- **Aviso de serialização em debug, não exceção.** `write()`/`writeAndFlush()`
-  chamam `jsonEncode` no valor na hora, só em debug, e emitem um
-  `debugPrint` em vermelho se ele não for serializável — mas nunca lançam
-  exceção nem bloqueiam a escrita (mesmo comportamento permissivo do
-  `GetStorage`). O valor segue gravado em memória normalmente; se
-  realmente não puder ser codificado, a falha só volta a aparecer, calada,
-  lá dentro do flush.
-- **Sem suporte a Web nesta v1** (ver limitações abaixo).
+## ⚠️ Known limitations (documented, not hidden)
 
----
+- **No Web support in this v1.** If it's ever added, it should use
+  `package:web` via conditional imports — **never** `dart:html`, since
+  `dart:html` blocks WASM compilation (`dart2wasm`).
+- **Not isolate-safe.** Each `AllBox` keeps its state in memory in the
+  isolate where it was initialized; there's no cross-isolate
+  synchronization. If you use multiple isolates (e.g. `compute()`,
+  background isolates), each one needs its own `init()` and they won't see
+  each other's writes until they re-read from disk.
+- **`File.rename` for the atomic swap is OS-dependent.** On POSIX
+  (Linux/macOS/Android/iOS), renaming over an existing file is atomic. On
+  Windows, behavior can vary between Dart SDK versions; test this scenario
+  specifically if your app runs on Windows desktop.
 
-## ⚠️ Limitações conhecidas (documentadas, não escondidas)
+## 📊 Benchmark results (local run)
 
-- **Sem suporte a Web nesta v1.** Se um dia for adicionado, deve usar
-  `package:web` via conditional imports — **nunca** `dart:html`, já que
-  `dart:html` impede a compilação para WASM (`dart2wasm`).
-- **Não é isolate-safe.** Cada `AllBox` mantém seu estado em memória no
-  isolate onde foi inicializado; não há sincronização entre isolates. Se
-  você usa múltiplos isolates (ex.: `compute()`, isolates de background),
-  cada um precisa do seu próprio `init()` e eles não verão as escritas uns
-  dos outros até reler do disco.
-- **`File.rename` para o swap atômico depende do sistema operacional.** Em
-  POSIX (Linux/macOS/Android/iOS) o rename sobre um arquivo existente é
-  atômico. Em Windows o comportamento pode variar entre versões do SDK do
-  Dart; teste esse cenário especificamente se seu app roda em Windows
-  desktop.
+Numbers from a real run of `benchmark/benchmark.dart` (Dart 3.9.2 stable,
+Windows 11 Pro), confirming the cost of each path described above —
+in-memory reads/writes are orders of magnitude faster than any path that
+touches disk, and debouncing drastically cuts the cost of write bursts
+compared to confirming each one to disk individually:
 
----
+![AllBox benchmark chart: average read/write in memory, debounced write, and durable writeAndFlush](doc/benchmark_result_simple.png)
 
-## 📊 Resultado do Benchmark (execução local)
+> **µs × ms:** the chart uses the most readable unit for each bar — **µs**
+> (microsecond, one millionth of a second) for the first three operations,
+> which are memory-only, and **ms** (millisecond, one thousandth of a
+> second = 1,000 µs) only for `writeAndFlush()`, which actually touches
+> disk and is therefore orders of magnitude slower. It's not a unit error
+> — it's automatic zoom so every bar stays readable.
 
-Números de uma execução real em `benchmark/benchmark.dart` (Dart 3.9.2 stable,
-Windows 11 Pro), confirmando o custo de cada caminho descrito acima —
-leitura/escrita em memória são ordens de magnitude mais rápidas que qualquer
-caminho que toque disco, e o debounce reduz drasticamente o custo de bursts
-de escrita comparado a confirmar cada uma no disco individualmente:
-
-![Gráfico de benchmark do AllBox: tempo médio de read/write em memória, write debounced e writeAndFlush durável](doc/benchmark_result_simple.png)
-
-> **µs × ms:** o gráfico usa a unidade mais legível para cada barra —
-> **µs** (microssegundo, 1 milionésimo de segundo) para as três primeiras
-> operações, que são só memória, e **ms** (milissegundo, 1 milésimo de
-> segundo = 1.000 µs) só para `writeAndFlush()`, que realmente toca o disco
-> e por isso é ordens de magnitude mais lenta. Não é erro de unidade — é
-> zoom automático para cada barra continuar legível.
-
-| Operação | Throughput | Latência média |
+| Operation | Throughput | Average latency |
 | --- | --- | --- |
-| `read<int>()` em memória | 1.495.886 ops/s | 0,67 µs/op |
-| `write()` em memória (otimista) | 92.674 ops/s | 10,79 µs/op |
-| 200× `write()` debounced + 1 `flushNow()` | 36.403 ops/s | 27,47 µs/op |
-| `writeAndFlush()` (tmp + backup + rename, por chamada) | 187 ops/s | 5,34 ms/op (= 5.340,29 µs/op) |
+| In-memory `read<int>()` | 1,495,886 ops/s | 0.67 µs/op |
+| In-memory `write()` (optimistic) | 92,674 ops/s | 10.79 µs/op |
+| 200× debounced `write()` + 1 `flushNow()` | 36,403 ops/s | 27.47 µs/op |
+| `writeAndFlush()` (tmp + backup + rename, per call) | 187 ops/s | 5.34 ms/op (= 5,340.29 µs/op) |
 
-Como o próprio `benchmark/benchmark.dart` documenta, esses números só valem para o terminal onde eu testei rode `flutter test benchmark\benchmark.dart` corretamente no seu ambiente para medir na sua.
+As `benchmark/benchmark.dart` itself documents, these numbers only hold for
+the environment I tested on — run `dart run benchmark/benchmark.dart` in
+your own environment to measure on your own machine/disk.
 
----
+## ⚖️ Comparison
 
-## 🧪 Testes
+| | `all_box` | GetStorage | Hive | Isar | SharedPreferences |
+|---|---|---|---|---|---|
+| Reads | Synchronous, in memory | Synchronous, in memory | Synchronous (open box) | Synchronous (simple) / async (queries) | Async |
+| Storage `path` | Explicit, required | Resolved internally | Resolved by caller | Resolved by caller | Resolved by platform |
+| Documented crash-safety | Write-ahead + atomic rename + `.bak` | Not documented at the same level | Internal WAL/compaction | WAL via its own engine | Platform-dependent |
+| Web support | No (v1) | Yes | Yes | Yes | Yes |
+| Scope | Key-value + reactivity only | Storage + some UI utils (GetX) | Box-oriented storage | Full database | Platform wrapper |
+
+`all_box` intentionally doesn't try to be a database or resolve its own
+`path` — that's a design choice, not a gap.
+[Full, detailed comparison, including a performance benchmark, here](documentation/en/comparison.md).
+
+## 🤔 When to use it (and when not to)
+
+Reach for `all_box` when you want simple key-value storage — settings,
+flags, small app state — with synchronous reads after boot, optimistic
+writes with an explicit opt-in to durable confirmation, and a reactive
+layer with no external state-management dependency.
+
+Reach for something else when you specifically need what it specializes
+in: Web support and custom type adapters (Hive), a full embedded database
+with queries/indexes/relations (Isar), or the Flutter ecosystem's most
+"standard" platform wrapper (SharedPreferences) for a small app that
+doesn't need built-in reactivity.
+
+## 🧪 Testing
 
 ```bash
 flutter test
 ```
 
-Os testes cobrem especificamente os cenários de bug mapeados acima: arquivo
-corrompido com bytes binários aleatórios, JSON inválido, fallback para
-`.bak`, múltiplos `write()` gerando um único flush, isolamento entre
-containers, notificação correta de listeners em `erase()`, e
-`listenKey`/`listenAll` sendo corretamente removidos.
+The tests specifically cover the bug scenarios mapped above: a file
+corrupted with random binary bytes, invalid JSON, fallback to `.bak`,
+multiple `write()` calls coalescing into a single flush, isolation between
+containers, correct listener notification on `erase()`, and
+`listenKey`/`listenAll` being correctly removed.
 
-### Testando código que consome o `all_box`
+### Testing code that consumes `all_box`
 
-Se você está testando seu próprio app/pacote (não o `all_box` em si), não
-precisa de um diretório real em disco — use o backend em memória:
+If you're testing your own app/package (not `all_box` itself), you don't
+need a real directory on disk — use the in-memory backend:
 
 ```dart
 await AllBox.initWithMemoryBackendForTesting(
@@ -383,29 +407,39 @@ await AllBox.initWithMemoryBackendForTesting(
 );
 ```
 
-Isso não faz I/O real e não agenda nenhum `Timer` real (todo `write()`
-"flusha" de forma síncrona) — é especialmente importante dentro de
-`testWidgets`: sua zona `FakeAsync` espera que todo `Timer` seja resolvido
-antes do teste terminar, e um container disk-backed real deixaria um
-`Timer` de debounce pendente ali.
+This does no real I/O and schedules no real `Timer` (every `write()`
+"flushes" synchronously) — this matters especially inside `testWidgets`:
+your `FakeAsync` zone expects every `Timer` to resolve before the test
+ends, and a real disk-backed container would leave a debounce `Timer`
+pending there.
 
----
+## 📚 Documentation
 
-## 👥 Contribuidores
+- [Comparison](documentation/en/comparison.md) — detailed comparison vs. GetStorage, Hive, Isar, SharedPreferences, including a performance benchmark.
+
+## 📦 Other packages by us
+
+`all_box` is part of a small family of zero/low-dependency Dart & Flutter
+packages published under the
+[`opensource.tatamemaster.com.br`](https://pub.dev/publishers/opensource.tatamemaster.com.br/packages)
+verified publisher:
+
+| Package | Version | Description |
+|---|---|---|
+| [`all_observer`](https://pub.dev/packages/all_observer) | [![pub](https://img.shields.io/pub/v/all_observer.svg)](https://pub.dev/packages/all_observer) | Reactive state for Flutter with zero dependencies — `final count = 0.obs;` + `Observer(...)`. |
+| [`all_validations_br`](https://pub.dev/packages/all_validations_br) | [![pub](https://img.shields.io/pub/v/all_validations_br.svg)](https://pub.dev/packages/all_validations_br) | Brazilian document validation (CPF, CNPJ, CNH, PIX), input formatters/masks, JWT/UUID/currency/encryption utilities. |
+| [`all_image_compress`](https://pub.dev/packages/all_image_compress) | [![pub](https://img.shields.io/pub/v/all_image_compress.svg)](https://pub.dev/packages/all_image_compress) | Pure-Dart image compression (JPEG, PNG, GIF, BMP, TIFF, WebP), running in isolates. |
+
+## 👥 Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=CriandoGames/all_box)](https://github.com/CriandoGames/all_box/graphs/contributors)
 
 Made with [contrib.rocks](https://contrib.rocks).
 
-Contribuições são bem-vindas! Leia o [CONTRIBUTING.md](CONTRIBUTING.md) para
-começar.
+Contributions are welcome! Read [CONTRIBUTING.md](CONTRIBUTING.md) to get
+started.
 
 ---
 
-## 📄 Licença
-
-Distribuído sob a licença MIT. Veja [LICENSE](LICENSE) para mais detalhes.
-
----
-
-<p align="center">💻 Desenvolvido com ❤️ para facilitar o desenvolvimento no Flutter.</p>
+Issues and pull requests are welcome at the
+[GitHub repository](https://github.com/CriandoGames/all_box). Distributed under the [MIT](LICENSE) license.

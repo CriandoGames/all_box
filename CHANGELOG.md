@@ -1,3 +1,22 @@
+## 0.2.1
+
+Documentation-only release — no code changes to `lib/`, no breaking
+changes, no new external dependencies.
+
+- Restructured `README.md`/`README.pt-BR.md` into the same landing-page
+  format used by `all_observer` (table of contents, feature highlights,
+  compact comparison table, "when to use it" section, "other packages by
+  us" table, EN ⇄ PT-BR language switch links).
+- Added `documentation/en/comparison.md` and
+  `documentation/pt-BR/comparison.md`: a detailed, factual comparison
+  against GetStorage, Hive, Isar, and SharedPreferences, including a
+  performance benchmark table (1,000 operations: in-memory write, sync
+  read, durable disk write).
+- Added a new comparison benchmark chart
+  (`doc/comparison_benchmark_en.png` / `doc/comparison_benchmark_pt-BR.png`)
+  plotting all five solutions on a log scale.
+- Fixed the test-count badge (18 → 19) to match `test/all_box_test.dart`.
+
 ## 0.2.0
 
 * `AllBox.init()` gains an `initialData` parameter, seeding default values
