@@ -1,4 +1,4 @@
-import 'package:all_box/all_box.dart';
+import 'package:all_box/all_box_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 

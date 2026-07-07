@@ -2,7 +2,55 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
+
+/// A callback with no arguments and no return value.
+///
+/// Pure Dart equivalent of Flutter's `VoidCallback` (from
+/// `package:flutter/foundation.dart`), kept here so the core has zero
+/// Flutter imports.
+///
+/// **PT-BR:** Um callback sem argumentos e sem retorno.
+///
+/// Equivalente em Dart puro do `VoidCallback` do Flutter (de
+/// `package:flutter/foundation.dart`), mantido aqui para que o core não
+/// tenha nenhum import do Flutter.
+typedef VoidCallback = void Function();
+
+/// Whether the current build is a debug build.
+///
+/// Pure Dart equivalent of Flutter's `kDebugMode`, computed via [assert]
+/// instead of depending on `package:flutter/foundation.dart`.
+///
+/// **PT-BR:** Se o build atual é um build de debug.
+///
+/// Equivalente em Dart puro do `kDebugMode` do Flutter, calculado via
+/// [assert] em vez de depender de `package:flutter/foundation.dart`.
+bool get allBoxDebugMode {
+  var enabled = false;
+  assert(() {
+    enabled = true;
+    return true;
+  }());
+  return enabled;
+}
+
+/// Prints [message] to the console, but only in debug builds (i.e. only
+/// when asserts are enabled).
+///
+/// Pure Dart equivalent of Flutter's `debugPrint`.
+///
+/// **PT-BR:** Imprime [message] no console, mas somente em builds de debug
+/// (ou seja, somente quando asserts estão habilitados).
+///
+/// Equivalente em Dart puro do `debugPrint` do Flutter.
+void allBoxDebugLog(Object message) {
+  assert(() {
+    // ignore: avoid_print
+    print(message);
+    return true;
+  }());
+}
 
 /// A synchronous, lightweight key-value storage container.
 ///
@@ -421,11 +469,11 @@ class AllBox {
   /// `DateTime`, um `enum` sem `toJson()`, ou outro valor não codificável —
   /// deveria só ser avisado disso, bem alto, durante o desenvolvimento.
   void _warnIfNotSerializable(String method, String key, dynamic value) {
-    if (!kDebugMode) return;
+    if (!allBoxDebugMode) return;
     try {
       jsonEncode(value);
     } on Object catch (error) {
-      debugPrint(
+      allBoxDebugLog(
         '\x1B[31mAllBox("$container").$method(\'$key\', ...): value is not '
         'JSON-encodable ($error). It was written to memory anyway, but it '
         'will silently fail to reach disk. All values must be '
@@ -750,7 +798,7 @@ class _ContainerIO implements _IOBackend {
           Object error,
           StackTrace stackTrace,
         ) {
-          debugPrint(
+          allBoxDebugLog(
             'AllBox("$container"): debounced flush failed and was '
             'dropped: $error',
           );
@@ -941,7 +989,8 @@ class _InMemoryIO implements _IOBackend {
   }
 
   @override
-  Future<void> flushNow(Map<String, dynamic> snapshot, {bool fsync = true}) async {
+  Future<void> flushNow(Map<String, dynamic> snapshot,
+      {bool fsync = true}) async {
     flushCallCountForTesting++;
     _lastSnapshot = Map<String, dynamic>.of(snapshot);
   }

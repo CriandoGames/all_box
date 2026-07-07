@@ -1,7 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
-import 'all_box_impl.dart';
+// `hide VoidCallback`: the core also defines its own `VoidCallback` typedef
+// (identical `void Function()` signature) so it has zero Flutter imports.
+// Both would otherwise be visible here under the same name, which is an
+// ambiguous import; Flutter's own `VoidCallback` (from foundation.dart) is
+// used throughout this file instead.
+import '../core/all_box_impl.dart' hide VoidCallback;
 
 /// A [ValueListenable] backed by a single key of an [AllBox] container.
 ///
