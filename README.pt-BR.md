@@ -14,7 +14,7 @@
 
 
 <p align="center">
-💡 Armazenamento chave-valor síncrono, leve e rápido para Flutter — com escrita crash-safe e camada reativa 100% Flutter.
+💡 Armazenamento chave-valor síncrono, leve e rápido, Dart puro no core — com escrita crash-safe e camada reativa opcional para Flutter.
 </p>
 
 ## Sumário
@@ -36,7 +36,7 @@
 ## 🚀 Features
 
 - 🪶 **Leituras 100% síncronas.** Depois do `init()`, todo `read<T>()` é síncrono — sem `Future`, sem `FutureBuilder`, sem espera de I/O no caminho de leitura.
-- 🔌 **Camada reativa 100% Flutter.** `AllBoxListenable` e `AllBoxBuilder` são construídos diretamente sobre `ChangeNotifier` e `ValueListenable` — sem nenhuma dependência externa de gerenciamento de estado.
+- 🧱 **Core Dart puro, camada Flutter opcional.** `package:all_box/all_box.dart` não tem nenhum import de Flutter. `AllBoxListenable` e `AllBoxBuilder` — construídos diretamente sobre `ChangeNotifier` e `ValueListenable`, sem dependência externa de gerenciamento de estado — ficam no import separado `package:all_box/all_box_flutter.dart`.
 - 🛡️ **Crash-safety de verdade.** Toda escrita passa por um arquivo `.tmp` e só então um rename atômico substitui o arquivo principal (`.db`); um `.bak` do último estado bom é mantido à parte, com fallback automático em dois estágios (erro de decodificação UTF-8 e erro de `jsonDecode`).
 - 📍 **`path` explícito, nunca resolvido internamente.** `AllBox` nunca importa `path_provider` nem resolve diretório algum — quem chama `init()` decide onde o container vive. Isso evita, por construção, os bugs de resolução de plugin/Activity que afetam bibliotecas que resolvem o path por padrão.
 - ⚡ **Escrita otimista + debounced**, com `writeAndFlush()`/`flushNow()` para os momentos em que você precisa de uma confirmação real e imediata em disco.
@@ -55,8 +55,28 @@ dependencies:
   all_box: ^0.2.1
 ```
 
+Código só-Dart (sem widgets Flutter) precisa apenas do core:
+
 ```dart
 import 'package:all_box/all_box.dart';
+
+await AllBox.init('settings', path: dir.path);
+final box = AllBox('settings');
+box.write('name', 'Carlos');
+final name = box.read<String>('name');
+```
+
+Apps Flutter que também querem a camada reativa (`AllBoxListenable`,
+`AllBoxBuilder`) importam o entrypoint Flutter — ele reexporta tudo do
+core, então um único import basta:
+
+```dart
+import 'package:all_box/all_box_flutter.dart';
+
+AllBoxBuilder<String>(
+  keyName: 'name',
+  builder: (context, value) => Text(value ?? ''),
+);
 ```
 
 ## 📱 App de Exemplo
@@ -148,7 +168,12 @@ dispose();
 
 ### Widgets reativos, sem dependências externas de gerenciamento de estado
 
+Requer `package:all_box/all_box_flutter.dart` em vez do
+`package:all_box/all_box.dart` (só core):
+
 ```dart
+import 'package:all_box/all_box_flutter.dart';
+
 AllBoxBuilder<int>(
   keyName: 'counter',
   builder: (context, value) => Text('${value ?? 0}'),
@@ -244,6 +269,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 ```
 
 ## 📚 API
+
+Tudo abaixo, exceto `AllBoxListenable`/`AllBoxBuilder`, é core
+(`package:all_box/all_box.dart`); esses dois ficam em
+`package:all_box/all_box_flutter.dart`.
 
 | Member | Descrição |
 | --- | --- |

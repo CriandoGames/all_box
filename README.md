@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-💡 Synchronous, lightweight and fast key-value storage for Flutter — with crash-safe writes and a pure-Flutter reactive layer.
+💡 Synchronous, lightweight and fast key-value storage, pure Dart at its core — with crash-safe writes and an optional Flutter reactive layer.
 </p>
 
 ## Table of contents
@@ -37,9 +37,11 @@
 - 🪶 **100% synchronous reads.** After `init()`, every `read<T>()` is
   synchronous — no `Future`, no `FutureBuilder`, no I/O wait on the read
   path.
-- 🔌 **100% Flutter reactive layer.** `AllBoxListenable` and `AllBoxBuilder`
-  are built directly on `ChangeNotifier` and `ValueListenable` — no external
-  state-management dependency at all.
+- 🧱 **Pure Dart core, Flutter layer optional.** `package:all_box/all_box.dart`
+  has no Flutter import at all. `AllBoxListenable` and `AllBoxBuilder` — built
+  directly on `ChangeNotifier` and `ValueListenable`, no external
+  state-management dependency — live in the separate
+  `package:all_box/all_box_flutter.dart` import.
 - 🛡️ **Real crash-safety.** Every write lands on a `.tmp` file first, then
   an atomic rename replaces the main file (`.db`); a `.bak` of the last good
   state is kept separately, with automatic two-stage fallback (UTF-8
@@ -71,8 +73,28 @@ dependencies:
   all_box: ^0.2.1
 ```
 
+Dart-only code (no Flutter widgets) needs just the core:
+
 ```dart
 import 'package:all_box/all_box.dart';
+
+await AllBox.init('settings', path: dir.path);
+final box = AllBox('settings');
+box.write('name', 'Carlos');
+final name = box.read<String>('name');
+```
+
+Flutter apps that also want the reactive layer (`AllBoxListenable`,
+`AllBoxBuilder`) import the Flutter entrypoint instead — it re-exports
+everything from the core, so a single import is enough:
+
+```dart
+import 'package:all_box/all_box_flutter.dart';
+
+AllBoxBuilder<String>(
+  keyName: 'name',
+  builder: (context, value) => Text(value ?? ''),
+);
 ```
 
 ## 📱 Example App
@@ -164,7 +186,12 @@ dispose();
 
 ### Reactive widgets, no external state-management dependency
 
+Requires `package:all_box/all_box_flutter.dart` instead of the core-only
+`package:all_box/all_box.dart`:
+
 ```dart
+import 'package:all_box/all_box_flutter.dart';
+
 AllBoxBuilder<int>(
   keyName: 'counter',
   builder: (context, value) => Text('${value ?? 0}'),
@@ -259,6 +286,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 ```
 
 ## 📚 API
+
+Everything below `AllBoxListenable`/`AllBoxBuilder` is core
+(`package:all_box/all_box.dart`); those two live in
+`package:all_box/all_box_flutter.dart`.
 
 | Member | Description |
 | --- | --- |

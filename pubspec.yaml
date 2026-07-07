@@ -1,7 +1,7 @@
 name: all_box
 description: >
-  Synchronous, lightweight key-value storage for Flutter with crash-safe
-  writes (write-ahead + atomic rename) and a pure-Flutter reactive layer.
+  Synchronous, lightweight key-value storage with crash-safe writes
+  (write-ahead + atomic rename) and an optional Flutter reactive layer.
 version: 0.3.0
 homepage: https://github.com/CriandoGames/all_box
 repository: https://github.com/CriandoGames/all_box
@@ -16,9 +16,16 @@ environment:
   sdk: ">=3.0.0 <4.0.0"
   flutter: ">=3.10.0"
 
+# TODO: the core (package:all_box/all_box.dart) is already pure Dart, but
+# this pubspec still declares a hard `flutter` dependency because the
+# optional Flutter layer (package:all_box/all_box_flutter.dart) lives in the
+# same package. A future step can split the Flutter layer into its own
+# package (or a `flutter` extra), so the core can be published/consumed
+# without the Flutter SDK at all.
 dependencies:
   flutter:
     sdk: flutter
+  meta: ^1.9.0
 
 dev_dependencies:
   flutter_test:
