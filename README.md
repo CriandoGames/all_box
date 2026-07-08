@@ -433,36 +433,25 @@ across IO and Web).
   in-memory state — a container emptied by `erase()` still has a persisted
   `{}`, so it's not considered a "first run" and the seed isn't reapplied
   over it.
-- **Crash-safety via write-ahead + atomic rename.** Every disk write lands
-  on a `.tmp` file first, then an atomic rename replaces the main file
-  (`.db`); a `.bak` of the last good state is kept separately.
-- **Two-stage read error handling.** UTF-8 decoding errors and
-  `jsonDecode` errors are treated as distinct failure stages, each falling
-  back to `.bak` before giving up and starting empty.
-- **Serialized flush queue.** There are never two concurrent writes on the
-  same file, even if `flushNow()`/`writeAndFlush()` is called while a
-  debounced flush is still in flight.
+- **Crash-safety via write-ahead + atomic rename**, with a serialized
+  flush queue shared across every storage backend (IO, Web, in-memory, or
+  your own). Full pipeline details in
+  [Internal architecture](documentation/en/architecture.md).
 - **Reproducible benchmark.** Performance numbers measured on-device and
   maintained in this repository — see the [Comparison](#-comparison)
   section; reproduce them yourself with the example app
   (`cd example && flutter run --profile`, then tap the ⚡ icon) or run the
   package's own micro-benchmark with
   `flutter test benchmark/benchmark_test.dart`.
-- **A single, generic flush coordinator, shared by every storage.** The
-  debounce/coalescing/serialized-flush-queue logic lives once, inside
-  `AllBox` itself, and works against any `AllBoxStorage` (disk, Web,
-  in-memory, or your own) — it isn't duplicated per backend.
 - **Debug-only serialization warning, not an exception.**
   `write()`/`writeAndFlush()` call `jsonEncode` on the value on the spot,
   debug-only, and emit a red `debugPrint` if it isn't serializable — but
-  never throw or block the write (same permissive behavior as
-  `GetStorage`). The value is still written to memory normally; if it
-  truly can't be encoded, the failure only resurfaces silently deep inside
-  the flush.
-- **Web support via `dart:js_interop`, never `dart:html`.** `dart:html`
-  blocks `dart2wasm` compilation, so the Web storage backend is built on
-  plain `dart:js_interop` static interop instead (see limitations below for
-  what that backend can and can't do).
+  never throw or block the write. The value is still written to memory
+  normally; if it truly can't be encoded, the failure only resurfaces
+  silently deep inside the flush.
+- **Web support via `dart:js_interop`, never `dart:html`** (see
+  [Internal architecture](documentation/en/architecture.md) for why, and
+  the limitations below for what that backend can and can't do).
 
 ## ⚠️ Known limitations (documented, not hidden)
 
@@ -515,9 +504,9 @@ writes with an explicit opt-in to durable confirmation, and a reactive
 layer with no external state-management dependency.
 
 Reach for something else when you specifically need what it specializes
-in: Web support and custom type adapters (Hive), a full embedded database
-with queries/indexes/relations (Isar), or the Flutter ecosystem's most
-"standard" platform wrapper (SharedPreferences) for a small app that
+in: custom type adapters for complex objects (Hive), a full embedded
+database with queries/indexes/relations (Isar), or the Flutter ecosystem's
+most "standard" platform wrapper (SharedPreferences) for a small app that
 doesn't need built-in reactivity.
 
 ## 🧪 Testing
@@ -556,6 +545,7 @@ now a thin, `@Deprecated` wrapper around `AllBox.memory()`.)
 ## 📚 Documentation
 
 - [Comparison](documentation/en/comparison.md) — detailed comparison vs. GetStorage, Hive, Isar, SharedPreferences, including a performance benchmark.
+- [Internal architecture](documentation/en/architecture.md) — write-ahead + atomic rename pipeline, flush coordination, and the `dart:js_interop` Web backend.
 
 ## 📦 Other packages by us
 

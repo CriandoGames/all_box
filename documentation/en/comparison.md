@@ -21,7 +21,7 @@ libraries named here.
 | Crash-safety | Write-ahead (`.tmp`) + atomic rename + fallback `.bak`, documented | Not publicly documented at the same level of detail | Internal WAL/compaction (Hive 2), version-dependent | WAL via its own engine (Isar Core, Rust) | Entirely dependent on the platform's native implementation |
 | Storage `path` | Explicit, required in `init()` — never resolved internally | Resolved internally (uses `path_provider`/`GetStorage` defaults) | Resolved by the caller (`Hive.init(path)`) | Resolved by the caller (`Isar.open(directory: ...)`) | Resolved internally by the platform |
 | Reactivity | `AllBoxListenable`/`AllBoxBuilder`, 100% Flutter (`ChangeNotifier`/`ValueListenable`) | `GetBuilder`/`Obx` (coupled to the GetX ecosystem) | `ValueListenableBuilder` over `box.listenable()` | `watchObject`/`watchLazy` (streams) | None — needs your own wrapper |
-| Web support | No (v1) | Yes | Yes | Yes (via WASM) | Yes |
+| Web support | Yes (`window.localStorage` via `dart:js_interop`) | Yes | Yes | Yes (via WASM) | Yes |
 | Learning curve | Low | Low | Medium | Medium–high (schema, queries, codegen) | Low |
 | Scope | Key-value storage + reactivity only | Storage + some UI utilities (GetX) | Box/object-oriented storage | Full embedded database (queries, indexes, relations) | Thin wrapper over native platform preferences |
 
@@ -92,9 +92,9 @@ not necessarily a claim about `GetStorage`'s internal robustness.
 
 A box-based key-value database with its own file format, native Web
 support, and adapters for custom types. Best choice when you need to store
-complex Dart objects with minimal manual serialization, or need to run in
-the browser. `all_box` only handles plain JSON-encodable values (mapped to
-a single JSON file per container) — no adapters, no Web support in this v1.
+complex Dart objects with minimal manual serialization. `all_box` only
+handles plain JSON-encodable values (mapped to a single JSON file per
+container on IO, or a `localStorage` key on Web) — no adapters.
 
 ## Isar
 
@@ -125,8 +125,8 @@ where your data lives on disk (`path` required, never resolved by internal
 magic).
 
 Reach for something else when you specifically need what it specializes in:
-Web support and custom type adapters (Hive), a full embedded database with
-queries/indexes/relations (Isar), or just the Flutter ecosystem's most
+custom type adapters for complex objects (Hive), a full embedded database
+with queries/indexes/relations (Isar), or just the Flutter ecosystem's most
 "standard" platform wrapper (SharedPreferences) for a small app that needs
 no built-in reactivity at all.
 

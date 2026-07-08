@@ -419,39 +419,25 @@ código compartilhado entre IO e Web).
   conteúdo em memória — um container esvaziado por `erase()` ainda tem um
   `{}` persistido, então não é considerado "primeiro run" e o seed não é
   reaplicado por cima dele.
-- **Crash-safety com write-ahead + rename atômico.** Toda escrita em disco
-  passa por um arquivo `.tmp` e só então um rename atômico substitui o
-  arquivo principal (`.db`); um `.bak` do último estado bom é mantido à
-  parte.
-- **Tratamento de leitura em dois estágios.** Erros de decodificação UTF-8 e
-  erros de `jsonDecode` são tratados como estágios/pontos de falha
-  distintos, cada um com fallback para o `.bak` antes de desistir e começar
-  vazio.
-- **Fila de flush serializada.** Nunca há duas escritas concorrentes no
-  mesmo arquivo, mesmo se `flushNow()`/`writeAndFlush()` for chamado com um
-  flush debounced ainda em andamento.
+- **Crash-safety com write-ahead + rename atômico**, com uma fila de flush
+  serializada compartilhada por todo storage (IO, Web, memória, ou o seu
+  próprio). Detalhes completos do pipeline em
+  [Arquitetura interna](documentation/pt-BR/architecture.md).
 - **Benchmark reproduzível.** Números de performance medidos no
   dispositivo e mantidos neste repositório — veja a seção
   [Comparação](#-comparação); reproduza você mesmo pelo app example
   (`cd example && flutter run --profile`, depois toque no ícone ⚡) ou rode
   o micro-benchmark do pacote com
   `flutter test benchmark/benchmark_test.dart`.
-- **Um único coordenador de flush genérico, compartilhado por todo
-  storage.** A lógica de debounce/coalescing/fila de flush serializada vive
-  uma única vez, dentro do próprio `AllBox`, e funciona contra qualquer
-  `AllBoxStorage` (disco, Web, memória, ou o seu próprio) — não é duplicada
-  por backend.
 - **Aviso de serialização em debug, não exceção.** `write()`/`writeAndFlush()`
   chamam `jsonEncode` no valor na hora, só em debug, e emitem um
   `debugPrint` em vermelho se ele não for serializável — mas nunca lançam
-  exceção nem bloqueiam a escrita (mesmo comportamento permissivo do
-  `GetStorage`). O valor segue gravado em memória normalmente; se
-  realmente não puder ser codificado, a falha só volta a aparecer, calada,
-  lá dentro do flush.
-- **Suporte a Web via `dart:js_interop`, nunca `dart:html`.** O `dart:html`
-  impede a compilação para `dart2wasm`, então o backend de storage Web é
-  construído sobre static interop puro do `dart:js_interop` (veja as
-  limitações abaixo para o que esse backend pode e não pode fazer).
+  exceção nem bloqueiam a escrita. O valor segue gravado em memória
+  normalmente; se realmente não puder ser codificado, a falha só volta a
+  aparecer, calada, lá dentro do flush.
+- **Suporte a Web via `dart:js_interop`, nunca `dart:html`** (veja
+  [Arquitetura interna](documentation/pt-BR/architecture.md) para o motivo,
+  e as limitações abaixo para o que esse backend pode e não pode fazer).
 
 ## ⚠️ Limitações conhecidas (documentadas, não escondidas)
 
@@ -507,10 +493,11 @@ escrita otimista com opção de confirmação durável explícita, e uma camada
 reativa sem dependências externas de gerenciamento de estado.
 
 Escolha outra coisa quando precisar especificamente do que ela faz de
-melhor: suporte a Web e adapters de tipo customizado (Hive), um banco de
-dados embarcado completo com queries/índices/relações (Isar), ou o wrapper
-de plataforma mais "padrão" do ecossistema Flutter (SharedPreferences) para
-um app pequeno sem necessidade de reatividade embutida.
+melhor: adapters de tipo customizado para objetos complexos (Hive), um
+banco de dados embarcado completo com queries/índices/relações (Isar), ou
+o wrapper de plataforma mais "padrão" do ecossistema Flutter
+(SharedPreferences) para um app pequeno sem necessidade de reatividade
+embutida.
 
 ## 🧪 Testes
 
@@ -549,6 +536,7 @@ antes do teste terminar, e um container disk/Web-backed real deixaria um
 ## 📚 Documentação
 
 - [Comparação](documentation/pt-BR/comparison.md) — comparação detalhada com GetStorage, Hive, Isar, SharedPreferences, incluindo benchmark de desempenho.
+- [Arquitetura interna](documentation/pt-BR/architecture.md) — pipeline de write-ahead + rename atômico, coordenação de flush, e o backend Web via `dart:js_interop`.
 
 ## 📦 Outros pacotes nossos
 

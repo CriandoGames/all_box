@@ -21,7 +21,7 @@ de grandeza, não como benchmark oficial de nenhuma das bibliotecas citadas.
 | Crash-safety | Write-ahead (`.tmp`) + rename atômico + `.bak` de fallback, documentado | Não documentado publicamente com o mesmo nível de detalhe | WAL/compaction interno (Hive 2), depende da versão | WAL via engine própria (Isar Core, Rust) | Depende inteiramente da implementação nativa da plataforma |
 | `path` de armazenamento | Explícito, obrigatório em `init()` — nunca resolvido internamente | Resolvido internamente (usa `path_provider`/`GetStorage` defaults) | Resolvido pelo chamador (`Hive.init(path)`) | Resolvido pelo chamador (`Isar.open(directory: ...)`) | Resolvido internamente pela plataforma |
 | Reatividade | `AllBoxListenable`/`AllBoxBuilder`, 100% Flutter (`ChangeNotifier`/`ValueListenable`) | `GetBuilder`/`Obx` (acoplado ao ecossistema GetX) | `ValueListenableBuilder` sobre `box.listenable()` | `watchObject`/`watchLazy` (streams) | Nenhuma — precisa de wrapper próprio |
-| Suporte a Web | Não (v1) | Sim | Sim | Sim (via WASM) | Sim |
+| Suporte a Web | Sim (`window.localStorage` via `dart:js_interop`) | Sim | Sim | Sim (via WASM) | Sim |
 | Curva de aprendizado | Baixa | Baixa | Média | Média–alta (schema, queries, codegen) | Baixa |
 | Escopo | Só storage key-value + reatividade | Storage + parte de UI utilities (GetX) | Storage orientado a boxes/objetos | Banco de dados embarcado completo (queries, índices, relações) | Wrapper fino sobre preferências nativas da plataforma |
 
@@ -94,9 +94,9 @@ alegação sobre a robustez interna do `GetStorage`.
 Um banco de dados key-value baseado em boxes com um formato de arquivo
 próprio, suporte nativo a Web, e adapters para tipos customizados. Melhor
 escolha quando você precisa guardar objetos Dart complexos com um mínimo de
-serialização manual, ou precisa rodar no navegador. `all_box` só lida com
-valores JSON-encodáveis simples (mapeados para um único arquivo JSON por
-container) — sem adapters, sem suporte a Web nesta v1.
+serialização manual. `all_box` só lida com valores JSON-encodáveis simples
+(mapeados para um único arquivo JSON por container no IO, ou uma chave
+`localStorage` na Web) — sem adapters.
 
 ## Isar
 
@@ -129,9 +129,9 @@ explícito de onde os dados vivem no disco (`path` obrigatório, nunca
 resolvido por mágica interna).
 
 Escolha outra coisa quando precisar especificamente do que ela faz de
-melhor: suporte a Web e adapters de tipo customizado (Hive), um banco de
-dados embarcado completo com queries/índices/relações (Isar), ou só o
-wrapper de plataforma mais "padrão" do ecossistema Flutter
+melhor: adapters de tipo customizado para objetos complexos (Hive), um
+banco de dados embarcado completo com queries/índices/relações (Isar), ou
+só o wrapper de plataforma mais "padrão" do ecossistema Flutter
 (SharedPreferences) para um app pequeno que não precisa de nenhuma
 reatividade embutida.
 
