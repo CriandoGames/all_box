@@ -7,10 +7,12 @@
 // The real, window.localStorage-backed AllBoxBrowserStorage lives behind a
 // conditional import in lib/src/core/storage/platform/all_box_target_web.dart
 // and is only ever compiled/constructed on Web; it isn't (and can't easily
-// be) exercised by a normal VM test run. If a real-browser smoke test is
-// ever added for it, it would run via:
+// be) exercised by a normal VM test run. The real-browser smoke test lives
+// separately, in test/web/all_box_web_storage_browser_test.dart (tagged
+// `@TestOn('browser')` so it's skipped, not compiled, outside a browser
+// platform), and runs via:
 //
-//   dart test -p chrome test/web/all_box_web_storage_test.dart
+//   flutter test --platform chrome test/web/all_box_web_storage_browser_test.dart
 //
 // **PT-BR:** Testes do AllBoxWebStorage: a lógica pura em Dart (codificação/
 // decodificação JSON, nomeação de chave, encapsulamento de erros) por trás
@@ -23,10 +25,12 @@
 // import condicional em
 // lib/src/core/storage/platform/all_box_target_web.dart e só é de fato
 // compilada/construída na Web; não é (e não seria fácil de) exercitada por
-// uma execução normal de teste na VM. Se um teste de fumaça em navegador
-// real for adicionado para ela algum dia, rodaria via:
+// uma execução normal de teste na VM. O teste de fumaça em navegador real
+// vive separadamente, em test/web/all_box_web_storage_browser_test.dart
+// (marcado com `@TestOn('browser')`, então é pulado — sem sequer ser
+// compilado — fora de uma plataforma de navegador), e roda via:
 //
-//   dart test -p chrome test/web/all_box_web_storage_test.dart
+//   flutter test --platform chrome test/web/all_box_web_storage_browser_test.dart
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -220,6 +224,62 @@ void main() {
         browserStorage: _FakeBrowserStorage(),
       );
       await expectLater(storage.close(), completes);
+    });
+  });
+
+  group('AllBoxWebStorage: large payloads', () {
+    test('save/load round-trips a large snapshot (5,000 keys) intact',
+        () async {
+      final browser = _FakeBrowserStorage();
+      final storage = AllBoxWebStorage(container: 'large', browserStorage: browser);
+
+      final snapshot = <String, dynamic>{
+        for (var i = 0; i < 5000; i++) 'key_$i': 'value_$i',
+      };
+
+      await storage.save(snapshot, mode: AllBoxPersistMode.flush);
+      final loaded = await storage.load();
+
+      expect(loaded.length, 5000);
+      expect(loaded['key_0'], 'value_0');
+      expect(loaded['key_2500'], 'value_2500');
+      expect(loaded['key_4999'], 'value_4999');
+    });
+
+    test('save/load round-trips a single large string value intact',
+        () async {
+      final browser = _FakeBrowserStorage();
+      final storage = AllBoxWebStorage(container: 'large', browserStorage: browser);
+
+      // ~200 KB single value: well inside typical localStorage quotas
+      // (commonly a few MB per origin), but large enough to catch anything
+      // that would silently truncate the JSON string during encode/decode.
+      final bigValue = 'x' * (200 * 1024);
+
+      await storage.save({'blob': bigValue}, mode: AllBoxPersistMode.save);
+      final loaded = await storage.load();
+
+      expect(loaded['blob'], bigValue);
+      expect((loaded['blob'] as String).length, bigValue.length);
+    });
+
+    test('a large save/load round-trip stays reasonably fast against a '
+        'synchronous fake storage', () async {
+      final browser = _FakeBrowserStorage();
+      final storage = AllBoxWebStorage(container: 'large', browserStorage: browser);
+
+      final snapshot = <String, dynamic>{
+        for (var i = 0; i < 5000; i++) 'key_$i': i,
+      };
+
+      final stopwatch = Stopwatch()..start();
+      await storage.save(snapshot, mode: AllBoxPersistMode.flush);
+      await storage.load();
+      stopwatch.stop();
+
+      // Generous ceiling — this isn't a strict benchmark, just a regression
+      // guard against something accidentally becoming quadratic.
+      expect(stopwatch.elapsedMilliseconds, lessThan(2000));
     });
   });
 }

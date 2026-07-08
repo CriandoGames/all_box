@@ -184,6 +184,49 @@ void main() {
       expect(identical(first, second), isTrue);
       expect(second.read<String>('k'), 'v');
     });
+
+    test('a large box (5,000 keys) reads/writes intact via memory storage',
+        () async {
+      const container = 'memory_large_volume_test';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      final box = await AllBox.memory(container);
+
+      for (var i = 0; i < 5000; i++) {
+        box.write('key_$i', 'value_$i');
+      }
+
+      expect(box.getKeys().length, 5000);
+      expect(box.read<String>('key_0'), 'value_0');
+      expect(box.read<String>('key_2500'), 'value_2500');
+      expect(box.read<String>('key_4999'), 'value_4999');
+
+      // Every write "flushed" synchronously into the in-memory snapshot, so
+      // a fresh flushNow() must see the same data (no debounce backlog).
+      await box.flushNow();
+      expect(box.read<String>('key_4999'), 'value_4999');
+    });
+
+    test('reading 5,000 keys back stays fast (regression guard, not a '
+        'strict benchmark)', () async {
+      const container = 'memory_large_read_perf_test';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      final box = await AllBox.memory(container);
+      for (var i = 0; i < 5000; i++) {
+        box.write('key_$i', i);
+      }
+
+      final stopwatch = Stopwatch()..start();
+      var sum = 0;
+      for (var i = 0; i < 5000; i++) {
+        sum += box.read<int>('key_$i') ?? 0;
+      }
+      stopwatch.stop();
+
+      expect(sum, greaterThan(0));
+      expect(stopwatch.elapsedMilliseconds, lessThan(1000));
+    });
   });
 
   group('deprecated initWithMemoryBackendForTesting alias', () {

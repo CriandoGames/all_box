@@ -52,8 +52,9 @@
   decides where the container lives. This avoids, by construction, the
   plugin/Activity resolution bugs that affect libraries that resolve the
   path by default.
-- ⚡ **Optimistic, debounced writes**, with `writeAndFlush()`/`flushNow()`
-  for the moments you need a real, immediate on-disk guarantee.
+- ⚡ **Optimistic, debounced writes**, with `writeAndSave()` (waits for the
+  OS write) and `writeAndFlush()`/`flushNow()` (waits for `fsync`) for the
+  moments you need a stronger, immediate on-disk guarantee.
 - 🧪 **In-memory storage for testing.** `AllBox.memory()` runs with no real
   I/O and no real `Timer`, safe for `testWidgets`.
 - 🌐 **Web support.** `AllBox.init('settings')` (no `path`) automatically
@@ -185,7 +186,8 @@ box.write('name', 'Carlos');           // optimistic: memory + listeners
 String? name = box.read<String>('name');
 String safeName = box.readOrDefault<String>('name', 'anonymous');
 
-await box.writeAndFlush('name', 'Carlos'); // waits for disk confirmation
+await box.writeAndSave('name', 'Carlos');  // waits for the OS write (no fsync)
+await box.writeAndFlush('name', 'Carlos'); // waits for fsync (disk confirmation)
 
 box.remove('name');
 box.erase(); // clears everything and notifies every listener that existed
@@ -398,7 +400,8 @@ Everything below `AllBoxListenable`/`AllBoxBuilder` is core
 | `static AllBox.memory(container, {initialData})` | Recommended way to test code that consumes `all_box`: no real I/O, no real `Timer`. Replaces the deprecated `initWithMemoryBackendForTesting`. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Synchronous reads. |
 | `void write(key, value)` | Optimistic, debounced write. In debug mode, warns (via a red `debugPrint`) if `value` isn't JSON-encodable, but never throws. |
-| `Future<void> writeAndFlush(key, value)` | Writes and waits for disk confirmation. Same serialization warning as `write()`. |
+| `Future<void> writeAndSave(key, value)` | Writes and waits for the OS write to complete (no forced `fsync`) — survives an app crash, cheaper than `writeAndFlush()`. Same serialization warning as `write()`. |
+| `Future<void> writeAndFlush(key, value)` | Writes and waits for the strongest durability guarantee (`fsync` on IO). Same serialization warning as `write()`. |
 | `void remove(key)` / `void erase()` | Removes a key / clears everything (`erase()` notifies every previously-existing key's listeners). |
 | `Future<void> flushNow()` | Forces an immediate flush, bypassing the debounce window. |
 | `listenKey(key, cb)` / `removeListenKey(key, cb)` | Per-key listeners. |

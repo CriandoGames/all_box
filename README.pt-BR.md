@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/testes-19-brightgreen" alt="19 testes">
+  <img src="https://img.shields.io/badge/testes-78-brightgreen" alt="78 testes">
 </p>
 
 
@@ -24,6 +24,7 @@
 - [App de Exemplo](#-app-de-exemplo)
 - [Funcionalidades](#️-funcionalidades)
 - [Exemplos de Uso](#-exemplos-de-uso)
+- [Separando dados por usuário ou contexto](#-separando-dados-por-usuário-ou-contexto)
 - [API](#-api)
 - [Decisões de Design](#️-decisões-de-design)
 - [Limitações conhecidas](#️-limitações-conhecidas-documentadas-não-escondidas)
@@ -39,7 +40,7 @@
 - 🧱 **Core Dart puro, camada Flutter opcional.** `package:all_box/all_box.dart` não tem nenhum import de Flutter. `AllBoxListenable` e `AllBoxBuilder` — construídos diretamente sobre `ChangeNotifier` e `ValueListenable`, sem dependência externa de gerenciamento de estado — ficam no import separado `package:all_box/all_box_flutter.dart`.
 - 🛡️ **Crash-safety de verdade.** Toda escrita passa por um arquivo `.tmp` e só então um rename atômico substitui o arquivo principal (`.db`); um `.bak` do último estado bom é mantido à parte, com fallback automático em dois estágios (erro de decodificação UTF-8 e erro de `jsonDecode`).
 - 📍 **`path` explícito, nunca resolvido internamente.** `AllBox` nunca importa `path_provider` nem resolve diretório algum — quem chama `init()` decide onde o container vive. Isso evita, por construção, os bugs de resolução de plugin/Activity que afetam bibliotecas que resolvem o path por padrão.
-- ⚡ **Escrita otimista + debounced**, com `writeAndFlush()`/`flushNow()` para os momentos em que você precisa de uma confirmação real e imediata em disco.
+- ⚡ **Escrita otimista + debounced**, com `writeAndSave()` (espera o write do OS) e `writeAndFlush()`/`flushNow()` (espera o `fsync`) para os momentos em que você precisa de uma confirmação mais forte e imediata em disco.
 - 🧪 **Storage em memória para testes.** `AllBox.memory()` roda sem I/O real e sem `Timer` real, seguro para `testWidgets`.
 - 🌐 **Suporte a Web.** `AllBox.init('settings')` (sem `path`) usa automaticamente o `window.localStorage` na Web, via `dart:js_interop` — nunca `dart:html` (que impede a compilação para `dart2wasm`).
 
@@ -53,7 +54,7 @@ flutter pub add all_box
 
 ```yaml
 dependencies:
-  all_box: ^0.2.1
+  all_box: ^0.3.0
 ```
 
 Código só-Dart (sem widgets Flutter) precisa apenas do core:
@@ -167,7 +168,8 @@ box.write('name', 'Carlos');           // otimista: memória + listeners
 String? name = box.read<String>('name');
 String safeName = box.readOrDefault<String>('name', 'anonymous');
 
-await box.writeAndFlush('name', 'Carlos'); // espera o disco confirmar
+await box.writeAndSave('name', 'Carlos');  // espera o write do OS (sem fsync)
+await box.writeAndFlush('name', 'Carlos'); // espera o fsync (disco confirmado)
 
 box.remove('name');
 box.erase(); // limpa tudo e notifica todos os listeners que existiam
@@ -288,6 +290,88 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 }
 ```
 
+## 🧩 Separando dados por usuário ou contexto
+
+O `all_box` não tem uma API dedicada de "escopo", "namespace" ou
+"collection" — isso é proposital, para manter a superfície pequena. Em apps
+reais você ainda precisa separar dados locais por quem eles pertencem: o
+usuário logado, uma conta, uma academia, uma empresa, uma sessão, ou só o
+estado global do app. Dois padrões cobrem bem isso com a API que já existe.
+
+**Um container diferente por contexto.** `AllBox.init(container, ...)`
+aceita um nome de container arbitrário, e cada nome é um storage totalmente
+isolado — seu próprio arquivo no IO, sua própria chave de `localStorage` na
+Web:
+
+```dart
+final appBox = await AllBox.init('app_settings', path: dir.path);
+final userBox = await AllBox.init('user_$userId', path: dir.path);
+```
+
+Apagar ou limpar um container nunca afeta o outro. Isso funciona bem quando
+o número de contextos é pequeno e conhecido de antemão — ex.: um container
+por usuário logado, mais um para configurações globais do app.
+
+**Prefixo de chaves dentro de um único container.** Quando os contextos são
+mais dinâmicos, ou você prefere manter tudo num lugar só, prefixar as
+chaves funciona igualmente bem:
+
+```dart
+final userId = 'user_123';
+
+box.write('user:$userId:theme', 'dark');
+box.write('user:$userId:profile', profile);
+
+final theme = box.read<String>('user:$userId:theme');
+```
+
+```dart
+box.write('app:last_logged_user', userId);
+box.write('app:language', 'pt-BR');
+
+final language = box.read<String>('app:language');
+```
+
+Uma boa prática é separar as chaves por contexto. Isso ajuda a evitar
+conflito de dados e torna mais simples remover informações de um usuário
+específico sem apagar configurações globais do app.
+
+Essa separação é útil para:
+
+- apps com múltiplos usuários logados no mesmo dispositivo;
+- apps SaaS multi-tenant (empresa, academia, organização);
+- cache de respostas de API por conta;
+- preferências locais por perfil de usuário;
+- limpeza segura no logout, sem afetar configurações globais;
+- manter dados temporários de sessão separados do estado persistente do app.
+
+Para projetos maiores, recomendamos padronizar os prefixos das chaves em
+uma classe própria, evitando strings espalhadas pelo app:
+
+```dart
+class StorageKeys {
+  static String userTheme(String userId) => 'user:$userId:theme';
+  static String userProfile(String userId) => 'user:$userId:profile';
+
+  static const appLanguage = 'app:language';
+  static const lastLoggedUser = 'app:last_logged_user';
+}
+```
+
+```dart
+box.write(StorageKeys.userTheme(userId), 'dark');
+
+final theme = box.read<String>(
+  StorageKeys.userTheme(userId),
+);
+```
+
+Qualquer um dos dois padrões mantém o `all_box` fazendo o que ele se propõe
+a fazer — preferências, configurações locais, estado simples de app e
+micro caches — não um substituto para um banco de dados embarcado completo,
+com queries, índices ou relações (veja
+[Quando usar](#-quando-usar-e-quando-não-usar)).
+
 ## 📚 API
 
 Tudo abaixo, exceto `AllBoxListenable`/`AllBoxBuilder`, é core
@@ -301,7 +385,8 @@ Tudo abaixo, exceto `AllBoxListenable`/`AllBoxBuilder`, é core
 | `static AllBox.memory(container, {initialData})` | Forma recomendada de testar código que consome o `all_box`: sem I/O real, sem `Timer` real. Substitui o descontinuado `initWithMemoryBackendForTesting`. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Leituras síncronas. |
 | `void write(key, value)` | Escrita otimista + debounced. Em debug, avisa (via `debugPrint` em vermelho) se `value` não for JSON-encodável, mas nunca lança exceção. |
-| `Future<void> writeAndFlush(key, value)` | Escreve e espera a confirmação em disco. Mesmo aviso de serialização de `write()`. |
+| `Future<void> writeAndSave(key, value)` | Escreve e espera o write do OS terminar (sem `fsync` forçado) — sobrevive a um crash do app, mais barato que `writeAndFlush()`. Mesmo aviso de serialização de `write()`. |
+| `Future<void> writeAndFlush(key, value)` | Escreve e espera a garantia de durabilidade mais forte (`fsync` no IO). Mesmo aviso de serialização de `write()`. |
 | `void remove(key)` / `void erase()` | Remove uma chave / limpa tudo (`erase()` notifica os listeners de todas as chaves que existiam). |
 | `Future<void> flushNow()` | Força um flush imediato, ignorando a janela de debounce. |
 | `listenKey(key, cb)` / `removeListenKey(key, cb)` | Listeners por chave. |

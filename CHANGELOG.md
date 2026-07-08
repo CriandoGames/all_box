@@ -1,3 +1,62 @@
+## Unreleased
+
+Web support. The public import stays exactly the same
+(`import 'package:all_box/all_box.dart';`) — platform selection happens
+internally via Dart's conditional imports (`dart.library.io` /
+`dart.library.js_interop`), not via anything a consumer imports or
+configures.
+
+- **Web storage**, automatic and `path`-free: `AllBox.init('settings')` (no
+  `path`) now works on Web, backed by `window.localStorage` via pure
+  `dart:js_interop` static interop — never `dart:html` (which blocks
+  `dart2wasm` compilation) and no new dependency (`package:web` wasn't
+  needed). On IO platforms, behavior is unchanged: `path` is still how you
+  tell `AllBox` where `<container>.db` lives.
+- **New `AllBox.memory(container, {initialData})`**: promoted, non-deprecated
+  replacement for `initWithMemoryBackendForTesting()` (which still works,
+  now as a thin `@Deprecated` wrapper around `memory()`).
+- **New public types**: `AllBoxStorage` (the storage seam — IO, Web,
+  in-memory, or your own), `AllBoxPersistMode` (`save`/`flush` durability
+  tiers), `AllBoxStorageException` (unsupported platform, missing `path` on
+  IO, JSON encoding failures, Web storage quota/availability errors). All
+  advanced/optional — everyday code never touches them.
+- New test suites: `test/all_box_memory_storage_test.dart`,
+  `test/all_box_platform_storage_test.dart`,
+  `test/web/all_box_web_storage_test.dart` (fake-backed, runs on the VM),
+  and `test/web/all_box_web_storage_browser_test.dart` (real
+  `window.localStorage`, `@TestOn('browser')`-gated — run with
+  `flutter test --platform chrome test/web/all_box_web_storage_browser_test.dart`).
+  Added large-payload/large-volume coverage (5,000-key round-trips, ~200 KB
+  single values) across IO, memory and Web storage.
+
+**Breaking changes — and why they're mostly not a problem in practice:**
+
+- `AllBox.init()` return type changed from `Future<void>` to
+  `Future<AllBox>` (it now returns the initialized instance, so
+  `final box = await AllBox.init('settings');` works directly, instead of
+  needing a separate `AllBox('settings')` call afterwards). This is
+  source-breaking only for code that explicitly typed the return value as
+  `Future<void>` or passed `AllBox.init` itself as a
+  `Future<void> Function(...)` callback/tear-off — a plain
+  `await AllBox.init(...)` call site (the documented, common usage) is
+  unaffected.
+- `path` changed from a required named parameter to an optional one
+  (`String? path`). This is **not** breaking on its own — relaxing
+  required → optional never breaks a call site that already passed `path`.
+  It does change the failure mode on IO when `path` is omitted: previously
+  a compile-time "missing required argument" error, now a runtime
+  `AllBoxStorageException` with a clear message. Code that already
+  compiled before is unaffected either way.
+- The minimum Dart SDK constraint moved from `>=3.0.0` to `>=3.3.0`
+  (required by the `dart:js_interop` extension types used in the Web
+  storage backend). This **is** breaking for any consumer pinned to a Dart
+  SDK older than 3.3.0 — `pub get`/`flutter pub get` will fail to resolve
+  this version for them.
+- No import statement changed for consumers: `dart:io`, `dart:js_interop`
+  and the conditional-import platform selection are entirely internal to
+  the package (`lib/src/core/storage/platform/`); `package:all_box/all_box.dart`
+  is still the only import needed, on every platform.
+
 ## 0.3.0
 
 Performance release — additive API only, no new dependencies for the
