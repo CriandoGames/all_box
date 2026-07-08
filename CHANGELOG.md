@@ -1,10 +1,41 @@
 ## Unreleased
 
-Web support. The public import stays exactly the same
+Web support, plus a breaking change: the reactive layer is gone.
+
+The public core import stays exactly the same
 (`import 'package:all_box/all_box.dart';`) — platform selection happens
 internally via Dart's conditional imports (`dart.library.io` /
 `dart.library.js_interop`), not via anything a consumer imports or
 configures.
+
+**Breaking: reactivity removed.** `all_box` no longer has any
+listener/reactive API. Removed:
+
+- `AllBox.listenKey`/`removeListenKey`/`listenAll` (the core no longer
+  notifies anything on `write()`/`remove()`/`erase()`).
+- `AllBoxListenable<T>` and `AllBoxBuilder<T>` (the Flutter reactive
+  layer), and the `package:all_box/all_box_flutter.dart` entrypoint
+  entirely — there is now a single entrypoint,
+  `package:all_box/all_box.dart`, for every platform including Flutter.
+- The `.val()` extension on `String` (`AllBoxValue`/`AllBoxValueExtension`),
+  which existed only to read/write through the now-removed reactive layer.
+- `test/all_box_flutter_test.dart` (it only tested the removed reactive
+  layer); the `erase()`/`remove()`/`.val()` tests in the remaining suites
+  were updated to no longer assert on listener notifications.
+
+**Why:** this keeps `all_box` a plain synchronous key-value store with no
+opinion on state management, and makes the package pure Dart — it no
+longer depends on the Flutter SDK at all (`pubspec.yaml` no longer
+declares a `flutter:` dependency; `flutter_test` was replaced by
+`package:test` in the package's own test suite).
+
+**Migration:** call `write()`/`writeAndFlush()`/`erase()` as before, then
+update your UI the same way you would for any other synchronous,
+non-reactive storage — e.g. `setState` right after the call in a
+`StatefulWidget`, or by wiring `all_box` into a `ChangeNotifier` you own,
+`all_observer`, or whatever state-management approach your app already
+uses. There is no drop-in replacement inside `all_box` itself for
+`AllBoxBuilder`/`AllBoxListenable`/`listenKey`/`listenAll`/`.val()`.
 
 - **Web storage**, automatic and `path`-free: `AllBox.init('settings')` (no
   `path`) now works on Web, backed by `window.localStorage` via pure
@@ -25,7 +56,7 @@ configures.
   `test/web/all_box_web_storage_test.dart` (fake-backed, runs on the VM),
   and `test/web/all_box_web_storage_browser_test.dart` (real
   `window.localStorage`, `@TestOn('browser')`-gated — run with
-  `flutter test --platform chrome test/web/all_box_web_storage_browser_test.dart`).
+  `dart test -p chrome test/web/all_box_web_storage_browser_test.dart`).
   Added large-payload/large-volume coverage (5,000-key round-trips, ~200 KB
   single values) across IO, memory and Web storage.
 

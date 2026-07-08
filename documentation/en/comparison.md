@@ -20,10 +20,10 @@ libraries named here.
 | Writes | Optimistic + debounced; `writeAndSave()` (waits for the OS) and `writeAndFlush()` (fsync) to confirm on disk | Optimistic, no exposed configurable debounce; no API waits for disk | Async by default (`box.put`), with manual `flush()` | Async, with explicit transactions | Async, a full file rewrite per call on some platforms |
 | Crash-safety | Write-ahead (`.tmp`) + atomic rename + fallback `.bak`, documented | Not publicly documented at the same level of detail | Internal WAL/compaction (Hive 2), version-dependent | WAL via its own engine (Isar Core, Rust) | Entirely dependent on the platform's native implementation |
 | Storage `path` | Explicit, required in `init()` — never resolved internally | Resolved internally (uses `path_provider`/`GetStorage` defaults) | Resolved by the caller (`Hive.init(path)`) | Resolved by the caller (`Isar.open(directory: ...)`) | Resolved internally by the platform |
-| Reactivity | `AllBoxListenable`/`AllBoxBuilder`, 100% Flutter (`ChangeNotifier`/`ValueListenable`) | `GetBuilder`/`Obx` (coupled to the GetX ecosystem) | `ValueListenableBuilder` over `box.listenable()` | `watchObject`/`watchLazy` (streams) | None — needs your own wrapper |
+| Reactivity | None — bring your own (`setState`, a `ChangeNotifier` you own, `all_observer`, ...) | `GetBuilder`/`Obx` (coupled to the GetX ecosystem) | `ValueListenableBuilder` over `box.listenable()` | `watchObject`/`watchLazy` (streams) | None — needs your own wrapper |
 | Web support | Yes (`window.localStorage` via `dart:js_interop`) | Yes | Yes | Yes (via WASM) | Yes |
 | Learning curve | Low | Low | Medium | Medium–high (schema, queries, codegen) | Low |
-| Scope | Key-value storage + reactivity only | Storage + some UI utilities (GetX) | Box/object-oriented storage | Full embedded database (queries, indexes, relations) | Thin wrapper over native platform preferences |
+| Scope | Key-value storage only | Storage + some UI utilities (GetX) | Box/object-oriented storage | Full embedded database (queries, indexes, relations) | Thin wrapper over native platform preferences |
 
 ## Performance (measured on-device, profile mode)
 
@@ -112,23 +112,24 @@ Flutter's "official" platform wrapper over `UserDefaults` (iOS/macOS),
 Ubiquitous and simple, but async from end to end and limited to primitive
 types (no nested lists/maps without manual serialization). `all_box` covers
 the same core use case (settings, flags, small app state) with synchronous
-reads post-init and a built-in reactive layer — trading the per-platform
-native implementation for a single JSON file managed entirely by Dart.
+reads post-init — trading the per-platform native implementation for a
+single JSON file managed entirely by Dart.
 
 ## Why choose `all_box`
 
 Reach for it when you want simple key-value storage — settings, flags,
 small app state — with synchronous reads after boot, optimistic writes with
-an explicit opt-in to durable confirmation, a reactive layer with no
-external state-management dependency, and full, explicit control over
+an explicit opt-in to durable confirmation, and full, explicit control over
 where your data lives on disk (`path` required, never resolved by internal
-magic).
+magic). `all_box` has no reactive/listener API of its own — wire updates up
+to `setState`, a `ChangeNotifier` you own, `all_observer`, or whatever your
+app already uses.
 
 Reach for something else when you specifically need what it specializes in:
 custom type adapters for complex objects (Hive), a full embedded database
-with queries/indexes/relations (Isar), or just the Flutter ecosystem's most
-"standard" platform wrapper (SharedPreferences) for a small app that needs
-no built-in reactivity at all.
+with queries/indexes/relations (Isar), the Flutter ecosystem's most
+"standard" platform wrapper (SharedPreferences), or a storage library with
+built-in reactivity.
 
 ---
 
