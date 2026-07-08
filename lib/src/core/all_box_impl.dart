@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:meta/meta.dart';
-
 import 'storage/all_box_memory_storage.dart';
 import 'storage/all_box_platform_storage.dart';
 import 'storage/all_box_storage.dart';
@@ -494,7 +492,6 @@ class AllBox {
   /// **PT-BR:** Remove a instância singleton em cache deste container e
   /// cancela qualquer timer de debounce pendente, sem tocar no que já foi
   /// persistido. Feito para testes; não faz parte da API pública estável.
-  @visibleForTesting
   static void resetInstanceForTesting(String container) {
     final box = _instances.remove(container);
     box?._flush?.disposeForTesting();
@@ -511,7 +508,6 @@ class AllBox {
   /// forma determinística de verificar o comportamento de debounce, em vez
   /// de observar o sistema de arquivos por notificações (instável no
   /// Windows). Não faz parte da API pública estável.
-  @visibleForTesting
   int get flushCountForTesting => _flush?.flushCallCountForTesting ?? 0;
 
   /// Initializes [container] with a pure in-memory backend: no real disk
@@ -781,7 +777,8 @@ class _ImmediateFlushCoordinator implements _FlushCoordinator {
   }
 
   @override
-  Future<void> flushNow(Map<String, dynamic> snapshot, {bool fsync = true}) async {
+  Future<void> flushNow(Map<String, dynamic> snapshot,
+      {bool fsync = true}) async {
     flushCallCountForTesting++;
     await _storage.save(
       Map<String, dynamic>.of(snapshot),
