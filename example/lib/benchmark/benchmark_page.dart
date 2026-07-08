@@ -150,8 +150,7 @@ class _BenchmarkPageState extends State<BenchmarkPage> {
           ],
           if (results != null) ...[
             const SizedBox(height: 8),
-            Text(_environment,
-                style: Theme.of(context).textTheme.bodySmall),
+            Text(_environment, style: Theme.of(context).textTheme.bodySmall),
             for (final scenario in Scenario.values)
               _ScenarioCard(scenario: scenario, results: results),
             const SizedBox(height: 8),
@@ -181,8 +180,7 @@ class _ScenarioCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = <({String lib, ScenarioResult result})>[
       for (final lib in results)
-        if (lib[scenario] != null)
-          (lib: lib.libName, result: lib[scenario]!),
+        if (lib[scenario] != null) (lib: lib.libName, result: lib[scenario]!),
     ]..sort(
         (a, b) => a.result.elapsed.compareTo(b.result.elapsed),
       );

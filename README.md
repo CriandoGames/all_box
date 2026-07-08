@@ -9,11 +9,11 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/tests-78-brightgreen" alt="78 tests">
+  <img src="https://img.shields.io/badge/tests-77-brightgreen" alt="77 tests">
 </p>
 
 <p align="center">
-💡 Synchronous, lightweight and fast key-value storage, pure Dart at its core — with crash-safe writes and an optional Flutter reactive layer.
+💡 Synchronous, lightweight and fast key-value storage, pure Dart, with crash-safe writes.
 </p>
 
 ## Table of contents
@@ -38,11 +38,9 @@
 - 🪶 **100% synchronous reads.** After `init()`, every `read<T>()` is
   synchronous — no `Future`, no `FutureBuilder`, no I/O wait on the read
   path.
-- 🧱 **Pure Dart core, Flutter layer optional.** `package:all_box/all_box.dart`
-  has no Flutter import at all. `AllBoxListenable` and `AllBoxBuilder` — built
-  directly on `ChangeNotifier` and `ValueListenable`, no external
-  state-management dependency — live in the separate
-  `package:all_box/all_box_flutter.dart` import.
+- 🧱 **Pure Dart, zero Flutter dependency.** `package:all_box/all_box.dart`
+  has no Flutter import at all — `all_box` works in any Dart environment
+  (CLI, server, Flutter app), and has no reactive/listener API of its own.
 - 🛡️ **Real crash-safety.** Every write lands on a `.tmp` file first, then
   an atomic rename replaces the main file (`.db`); a `.bak` of the last good
   state is kept separately, with automatic two-stage fallback (UTF-8
@@ -69,7 +67,7 @@ Part of the `all_*` family of open-source packages alongside
 ## 📦 Installing
 
 ```
-flutter pub add all_box
+dart pub add all_box
 ```
 
 ```yaml
@@ -77,7 +75,7 @@ dependencies:
   all_box: ^0.3.0
 ```
 
-Dart-only code (no Flutter widgets) needs just the core:
+`all_box` is pure Dart and has a single entrypoint:
 
 ```dart
 import 'package:all_box/all_box.dart';
@@ -99,25 +97,16 @@ I/O at all:
 final box = await AllBox.memory('settings', initialData: {'darkMode': true});
 ```
 
-Flutter apps that also want the reactive layer (`AllBoxListenable`,
-`AllBoxBuilder`) import the Flutter entrypoint instead — it re-exports
-everything from the core, so a single import is enough:
-
-```dart
-import 'package:all_box/all_box_flutter.dart';
-
-AllBoxBuilder<String>(
-  keyName: 'name',
-  builder: (context, value) => Text(value ?? ''),
-);
-```
+`all_box` has no reactive/listener API of its own: in a Flutter app, update
+your UI by calling `setState` (or your state-management solution of choice)
+right after `write()`/`writeAndFlush()`/`erase()`, same as with any other
+synchronous, non-reactive storage.
 
 ## 📱 Example App
 
 The `example/` directory contains an interactive Flutter app (`CounterPage`)
 demonstrating the whole day-to-day public surface: optimistic `write()` vs.
-`writeAndFlush()`, a reactive `AllBoxBuilder<T>`, `listenAll` for global
-side effects (a `SnackBar`), and `flushNow()` fired on
+`writeAndFlush()`, `erase()`, and `flushNow()` fired on
 `AppLifecycleState.paused`.
 
 To run it:
@@ -179,8 +168,8 @@ is ignored and whatever is on disk wins.
 ```dart
 final box = AllBox('my_container');
 
-box.write('name', 'Carlos');           // optimistic: memory + listeners
-                                        // update immediately, disk follows
+box.write('name', 'Carlos');           // optimistic: memory updates
+                                        // immediately, disk follows
                                         // ~100ms later (debounced)
 
 String? name = box.read<String>('name');
@@ -190,54 +179,9 @@ await box.writeAndSave('name', 'Carlos');  // waits for the OS write (no fsync)
 await box.writeAndFlush('name', 'Carlos'); // waits for fsync (disk confirmation)
 
 box.remove('name');
-box.erase(); // clears everything and notifies every listener that existed
+box.erase(); // clears everything
 
 await box.flushNow(); // forces a flush now, e.g. on AppLifecycleState.paused
-```
-
-### Listening for changes
-
-```dart
-box.listenKey('name', () => print('name changed'));
-box.removeListenKey('name', callback);
-
-final dispose = box.listenAll(() => print('container changed'));
-// later
-dispose();
-```
-
-### Reactive widgets, no external state-management dependency
-
-Requires `package:all_box/all_box_flutter.dart` instead of the core-only
-`package:all_box/all_box.dart`:
-
-```dart
-import 'package:all_box/all_box_flutter.dart';
-
-AllBoxBuilder<int>(
-  keyName: 'counter',
-  builder: (context, value) => Text('${value ?? 0}'),
-)
-```
-
-Or build your own `ValueListenable` with `AllBoxListenable<T>`:
-
-```dart
-final counter = AllBoxListenable<int>('counter');
-ValueListenableBuilder<int?>(
-  valueListenable: counter,
-  builder: (context, value, _) => Text('${value ?? 0}'),
-);
-```
-
-### DI-free `.val()` helper (optional)
-
-An opt-in mini state-manager, with no dependency-injection coupling at all:
-
-```dart
-final darkMode = 'darkMode'.val(false);
-print(darkMode.value);
-darkMode.value = true;
 ```
 
 ## 🧪 Usage examples
@@ -257,33 +201,32 @@ box.write('score', 100);              // memory updated immediately
 await box.writeAndFlush('score', 100); // only returns after disk confirms
 ```
 
-### Reacting to a single key inside a widget
+### Updating a widget after a write
+
+`all_box` has no built-in reactivity, so a widget that displays a stored
+value re-reads it and calls `setState` right after writing:
 
 ```dart
-class DarkModeSwitch extends StatelessWidget {
+class DarkModeSwitch extends StatefulWidget {
   const DarkModeSwitch({super.key});
 
   @override
+  State<DarkModeSwitch> createState() => _DarkModeSwitchState();
+}
+
+class _DarkModeSwitchState extends State<DarkModeSwitch> {
+  late bool _darkMode = AllBox().readOrDefault<bool>('darkMode', false);
+
+  void _toggle(bool value) {
+    AllBox().write('darkMode', value);
+    setState(() => _darkMode = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return AllBoxBuilder<bool>(
-      keyName: 'darkMode',
-      builder: (context, value) => Switch(
-        value: value ?? false,
-        onChanged: (v) => AllBox().write('darkMode', v),
-      ),
-    );
+    return Switch(value: _darkMode, onChanged: _toggle);
   }
 }
-```
-
-### Clearing a container and reacting globally
-
-```dart
-final dispose = box.listenAll(() => print('something changed in "settings"'));
-
-box.erase(); // fires the listener above exactly once
-
-dispose();
 ```
 
 ### Container introspection
@@ -389,10 +332,6 @@ full embedded database with queries, indexes or relations (see
 
 ## 📚 API
 
-Everything below `AllBoxListenable`/`AllBoxBuilder` is core
-(`package:all_box/all_box.dart`); those two live in
-`package:all_box/all_box_flutter.dart`.
-
 | Member | Description |
 | --- | --- |
 | `AllBox([container])` | Factory constructor; returns a singleton per container name. |
@@ -402,14 +341,9 @@ Everything below `AllBoxListenable`/`AllBoxBuilder` is core
 | `void write(key, value)` | Optimistic, debounced write. In debug mode, warns (via a red `debugPrint`) if `value` isn't JSON-encodable, but never throws. |
 | `Future<void> writeAndSave(key, value)` | Writes and waits for the OS write to complete (no forced `fsync`) — survives an app crash, cheaper than `writeAndFlush()`. Same serialization warning as `write()`. |
 | `Future<void> writeAndFlush(key, value)` | Writes and waits for the strongest durability guarantee (`fsync` on IO). Same serialization warning as `write()`. |
-| `void remove(key)` / `void erase()` | Removes a key / clears everything (`erase()` notifies every previously-existing key's listeners). |
+| `void remove(key)` / `void erase()` | Removes a key / clears everything. |
 | `Future<void> flushNow()` | Forces an immediate flush, bypassing the debounce window. |
-| `listenKey(key, cb)` / `removeListenKey(key, cb)` | Per-key listeners. |
-| `VoidCallback listenAll(cb)` | Global listener; returns a dispose function. |
 | `hasData(key)`, `getKeys()`, `getValues()` | Introspection. |
-| `AllBoxListenable<T>` | `ChangeNotifier` + `ValueListenable<T?>` for a single key. |
-| `AllBoxBuilder<T>` | Widget that rebuilds when `keyName` changes. |
-| `'key'.val<T>(default)` | Optional DI-free mini state-manager handle. |
 
 ### Why is `path` required on IO, but not on Web?
 
@@ -437,6 +371,12 @@ across IO and Web).
   flush queue shared across every storage backend (IO, Web, in-memory, or
   your own). Full pipeline details in
   [Internal architecture](documentation/en/architecture.md).
+- **No built-in reactivity.** `all_box` has no listener/reactive API of its
+  own — `write()`, `remove()` and `erase()` only update memory and schedule
+  persistence. This keeps the core surface small and avoids coupling to any
+  particular state-management approach; wire it up to `setState`, a
+  `ChangeNotifier` you own, `all_observer`, or whatever your app already
+  uses.
 - **Reproducible benchmark.** Performance numbers measured on-device and
   maintained in this repository — see the [Comparison](#-comparison)
   section; reproduce them yourself with the example app
@@ -474,6 +414,8 @@ across IO and Web).
   (Linux/macOS/Android/iOS), renaming over an existing file is atomic. On
   Windows, behavior can vary between Dart SDK versions; test this scenario
   specifically if your app runs on Windows desktop.
+- **No built-in reactivity.** `write()`, `remove()` and `erase()` don't
+  notify anything — see [Design decisions](#️-design-decisions) above.
 
 ## ⚖️ Comparison
 
@@ -483,7 +425,8 @@ across IO and Web).
 | Storage `path` | Explicit, required | Resolved internally | Resolved by caller | Resolved by caller | Resolved by platform |
 | Documented crash-safety | Write-ahead + atomic rename + `.bak` | Not documented at the same level | Internal WAL/compaction | WAL via its own engine | Platform-dependent |
 | Web support | Yes (`localStorage`) | Yes | Yes | Yes | Yes |
-| Scope | Key-value + reactivity only | Storage + some UI utils (GetX) | Box-oriented storage | Full database | Platform wrapper |
+| Reactivity | None (bring your own) | `GetBuilder`/`Obx` (GetX) | `ValueListenableBuilder` over `box.listenable()` | `watchObject`/`watchLazy` (streams) | None — needs your own wrapper |
+| Scope | Key-value storage only | Storage + some UI utils (GetX) | Box-oriented storage | Full database | Platform wrapper |
 
 ![Performance comparison: all_box vs. Hive and SharedPreferences, measured on-device in profile mode](doc/comparison_benchmark_en.png)
 
@@ -499,15 +442,15 @@ offers that guarantee (`writeAndFlush()`).
 ## 🤔 When to use it (and when not to)
 
 Reach for `all_box` when you want simple key-value storage — settings,
-flags, small app state — with synchronous reads after boot, optimistic
-writes with an explicit opt-in to durable confirmation, and a reactive
-layer with no external state-management dependency.
+flags, small app state — with synchronous reads after boot and optimistic
+writes with an explicit opt-in to durable confirmation, and you're fine
+wiring up your own UI updates (no built-in reactivity).
 
 Reach for something else when you specifically need what it specializes
 in: custom type adapters for complex objects (Hive), a full embedded
-database with queries/indexes/relations (Isar), or the Flutter ecosystem's
-most "standard" platform wrapper (SharedPreferences) for a small app that
-doesn't need built-in reactivity.
+database with queries/indexes/relations (Isar), the Flutter ecosystem's
+most "standard" platform wrapper (SharedPreferences), or a storage library
+with built-in reactivity out of the box.
 
 ## 🧪 Testing
 
@@ -517,9 +460,8 @@ flutter test
 
 The tests specifically cover the bug scenarios mapped above: a file
 corrupted with random binary bytes, invalid JSON, fallback to `.bak`,
-multiple `write()` calls coalescing into a single flush, isolation between
-containers, correct listener notification on `erase()`, and
-`listenKey`/`listenAll` being correctly removed.
+multiple `write()` calls coalescing into a single flush, and isolation
+between containers.
 
 ### Testing code that consumes `all_box`
 
