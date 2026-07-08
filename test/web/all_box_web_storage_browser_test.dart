@@ -6,15 +6,10 @@
 // `@TestOn('browser')` below is what makes this safe to keep inside the
 // normal `test/` tree: the test runner reads that annotation up front and
 // skips (never compiles) this file on any non-browser platform, so a plain
-// `flutter test` — which runs on the VM — never touches the
-// `dart:js_interop` import in the Web platform target. Run this file
-// specifically with:
+// `dart test` — which runs on the VM — never touches the `dart:js_interop`
+// import in the Web platform target. Run this file specifically with:
 //
-//   flutter test --platform chrome test/web/all_box_web_storage_browser_test.dart
-//
-// (equivalently, `dart test -p chrome test/web/all_box_web_storage_browser_test.dart`
-// if you're driving `package:test` directly instead of through Flutter's
-// tooling.)
+//   dart test -p chrome test/web/all_box_web_storage_browser_test.dart
 //
 // **PT-BR:** Teste de fumaça em navegador real para o storage Web do
 // AllBox: exercita o caminho de fato apoiado em `window.localStorage`
@@ -24,21 +19,17 @@
 // O `@TestOn('browser')` abaixo é o que torna seguro manter este arquivo
 // dentro da árvore normal de `test/`: o test runner lê essa anotação antes
 // de mais nada e pula (nunca compila) este arquivo em qualquer plataforma
-// que não seja navegador, então um `flutter test` comum — que roda na VM —
+// que não seja navegador, então um `dart test` comum — que roda na VM —
 // nunca toca no import de `dart:js_interop` do alvo de plataforma Web. Rode
 // este arquivo especificamente com:
 //
-//   flutter test --platform chrome test/web/all_box_web_storage_browser_test.dart
-//
-// (equivalente a `dart test -p chrome test/web/all_box_web_storage_browser_test.dart`
-// se você estiver rodando `package:test` diretamente, em vez de via
-// ferramental do Flutter.)
+//   dart test -p chrome test/web/all_box_web_storage_browser_test.dart
 @TestOn('browser')
 library;
 
 import 'dart:js_interop';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 import 'package:all_box/all_box.dart';
 

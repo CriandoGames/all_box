@@ -1,26 +1,25 @@
 // Tests for the automatic platform storage resolution used by AllBox.init()
 // when no explicit `storage:` is supplied — see
 // lib/src/core/storage/all_box_platform_storage.dart. Since this test suite
-// always runs on a Dart IO platform (the VM, via `flutter test`/`dart
-// test`), it exercises the IO branch of that resolution (including the
-// "path is required on IO" error) plus the explicit `storage:` override,
-// which works identically regardless of platform.
+// always runs on a Dart IO platform (the VM, via `dart test`), it exercises
+// the IO branch of that resolution (including the "path is required on IO"
+// error) plus the explicit `storage:` override, which works identically
+// regardless of platform.
 //
 // **PT-BR:** Testes da resolução automática de storage de plataforma usada
 // pelo AllBox.init() quando nenhum `storage:` explícito é informado — veja
 // lib/src/core/storage/all_box_platform_storage.dart. Como esta suíte de
-// testes sempre roda em uma plataforma Dart IO (a VM, via `flutter test`/
-// `dart test`), ela exercita o ramo IO dessa resolução (incluindo o erro de
-// "path é obrigatório no IO") mais o override explícito de `storage:`, que
-// funciona de forma idêntica independente da plataforma.
+// testes sempre roda em uma plataforma Dart IO (a VM, via `dart test`), ela
+// exercita o ramo IO dessa resolução (incluindo o erro de "path é
+// obrigatório no IO") mais o override explícito de `storage:`, que funciona
+// de forma idêntica independente da plataforma.
 
 import 'dart:io';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 import 'package:all_box/all_box.dart';
 import 'package:all_box/src/core/storage/all_box_platform_storage.dart';
-import 'package:all_box/src/core/storage/all_box_storage.dart';
 
 class _RecordingStorage implements AllBoxStorage {
   final Map<String, dynamic> _snapshot;

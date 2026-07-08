@@ -10,19 +10,6 @@ import 'storage/all_box_storage.dart';
 export 'storage/all_box_storage.dart' show AllBoxStorage, AllBoxPersistMode;
 export 'storage/all_box_storage_exception.dart' show AllBoxStorageException;
 
-/// A callback with no arguments and no return value.
-///
-/// Pure Dart equivalent of Flutter's `VoidCallback` (from
-/// `package:flutter/foundation.dart`), kept here so the core has zero
-/// Flutter imports.
-///
-/// **PT-BR:** Um callback sem argumentos e sem retorno.
-///
-/// Equivalente em Dart puro do `VoidCallback` do Flutter (de
-/// `package:flutter/foundation.dart`), mantido aqui para que o core não
-/// tenha nenhum import do Flutter.
-typedef VoidCallback = void Function();
-
 /// Whether the current build is a debug build.
 ///
 /// Pure Dart equivalent of Flutter's `kDebugMode`, computed via [assert]
@@ -63,9 +50,9 @@ void allBoxDebugLog(Object message) {
 /// `AllBox` keeps all data in memory (in a `Map<String, dynamic>`), so every
 /// read (`read`, `readOrDefault`, `hasData`, `getKeys`, `getValues`) is
 /// synchronous and never touches the underlying storage. Writes are
-/// optimistic: `write()` updates memory and notifies listeners immediately;
-/// persisting happens asynchronously afterwards, debounced so that bursts of
-/// writes generate a single flush.
+/// optimistic: `write()` updates memory immediately; persisting happens
+/// asynchronously afterwards, debounced so that bursts of writes generate a
+/// single flush.
 ///
 /// One physical unit of storage is used per *container* (a logical name),
 /// not one per key. On IO platforms that's a `<container>.db` file (plus
@@ -78,10 +65,9 @@ void allBoxDebugLog(Object message) {
 /// O `AllBox` mantém todos os dados em memória (em um `Map<String,
 /// dynamic>`), então toda leitura (`read`, `readOrDefault`, `hasData`,
 /// `getKeys`, `getValues`) é síncrona e nunca toca o storage subjacente. As
-/// escritas são otimistas: `write()` atualiza a memória e notifica os
-/// listeners imediatamente; a persistência acontece depois, de forma
-/// assíncrona e com debounce, para que várias escritas seguidas gerem um
-/// único flush.
+/// escritas são otimistas: `write()` atualiza a memória imediatamente; a
+/// persistência acontece depois, de forma assíncrona e com debounce, para
+/// que várias escritas seguidas gerem um único flush.
 ///
 /// Uma unidade física de storage é usada por *container* (um nome lógico),
 /// não uma por chave. Em plataformas IO isso é um arquivo `<container>.db`
@@ -124,10 +110,6 @@ class AllBox {
   ///
   /// **PT-BR:** Dados em memória deste container, lidos de forma síncrona.
   final Map<String, dynamic> _box = <String, dynamic>{};
-
-  final Map<String, List<VoidCallback>> _keyListeners =
-      <String, List<VoidCallback>>{};
-  final List<VoidCallback> _globalListeners = <VoidCallback>[];
 
   _FlushCoordinator? _flush;
   bool _initialized = false;
@@ -339,25 +321,21 @@ class AllBox {
 
   /// Writes [value] under [key].
   ///
-  /// This is optimistic: the in-memory map is updated and listeners
-  /// (`listenKey`/`listenAll`) are notified synchronously, before this
-  /// method returns. The underlying persistence is scheduled asynchronously
-  /// and debounced — several `write()` calls in quick succession result in
-  /// a single flush.
+  /// This is optimistic: the in-memory map is updated synchronously, before
+  /// this method returns. The underlying persistence is scheduled
+  /// asynchronously and debounced — several `write()` calls in quick
+  /// succession result in a single flush.
   ///
   /// **PT-BR:** Escreve [value] em [key].
   ///
-  /// Isso é otimista: o mapa em memória é atualizado e os listeners
-  /// (`listenKey`/`listenAll`) são notificados de forma síncrona, antes
-  /// deste método retornar. A persistência subjacente é agendada de forma
-  /// assíncrona e com debounce — várias chamadas de `write()` em sequência
-  /// rápida resultam em um único flush.
+  /// Isso é otimista: o mapa em memória é atualizado de forma síncrona,
+  /// antes deste método retornar. A persistência subjacente é agendada de
+  /// forma assíncrona e com debounce — várias chamadas de `write()` em
+  /// sequência rápida resultam em um único flush.
   void write(String key, dynamic value) {
     _assertInitialized('write');
     _warnIfNotSerializable('write', key, value);
     _box[key] = value;
-    _notifyKey(key);
-    _notifyGlobal();
     _flush!.scheduleFlush(_box);
   }
 
@@ -371,8 +349,6 @@ class AllBox {
     _assertInitialized('writeAndFlush');
     _warnIfNotSerializable('writeAndFlush', key, value);
     _box[key] = value;
-    _notifyKey(key);
-    _notifyGlobal();
     await _flush!.flushNow(_box);
   }
 
@@ -420,38 +396,25 @@ class AllBox {
     _assertInitialized('writeAndSave');
     _warnIfNotSerializable('writeAndSave', key, value);
     _box[key] = value;
-    _notifyKey(key);
-    _notifyGlobal();
     await _flush!.flushNow(_box, fsync: false);
   }
 
-  /// Removes [key], notifying its listeners if it was present.
+  /// Removes [key], if it was present.
   ///
-  /// **PT-BR:** Remove [key], notificando seus listeners se ela existia.
+  /// **PT-BR:** Remove [key], se ela existia.
   void remove(String key) {
     _assertInitialized('remove');
     if (!_box.containsKey(key)) return;
     _box.remove(key);
-    _notifyKey(key);
-    _notifyGlobal();
     _flush!.scheduleFlush(_box);
   }
 
-  /// Clears every key in this container, notifying the listeners of every
-  /// key that existed *before* the container was cleared (as well as the
-  /// global listeners).
+  /// Clears every key in this container.
   ///
-  /// **PT-BR:** Limpa todas as chaves deste container, notificando os
-  /// listeners de cada chave que existia *antes* do container ser limpo
-  /// (assim como os listeners globais).
+  /// **PT-BR:** Limpa todas as chaves deste container.
   void erase() {
     _assertInitialized('erase');
-    final keysBefore = List<String>.of(_box.keys);
     _box.clear();
-    for (final key in keysBefore) {
-      _notifyKey(key);
-    }
-    _notifyGlobal();
     _flush!.scheduleFlush(_box);
   }
 
@@ -468,64 +431,6 @@ class AllBox {
   Future<void> flushNow() async {
     _assertInitialized('flushNow');
     await _flush!.flushNow(_box);
-  }
-
-  /// Registers [callback] to be invoked whenever [key] is written to or
-  /// removed (including via [erase]).
-  ///
-  /// **PT-BR:** Registra [callback] para ser chamado sempre que [key] for
-  /// escrita ou removida (inclusive via [erase]).
-  void listenKey(String key, VoidCallback callback) {
-    _keyListeners.putIfAbsent(key, () => <VoidCallback>[]).add(callback);
-  }
-
-  /// Removes a callback previously registered with [listenKey].
-  ///
-  /// **PT-BR:** Remove um callback previamente registrado com [listenKey].
-  void removeListenKey(String key, VoidCallback callback) {
-    final listeners = _keyListeners[key];
-    if (listeners == null) return;
-    listeners.remove(callback);
-    if (listeners.isEmpty) _keyListeners.remove(key);
-  }
-
-  /// Registers [callback] to be invoked on every mutation of this container
-  /// (`write`, `remove`, `erase`), regardless of key.
-  ///
-  /// Returns a [VoidCallback] that removes the listener, e.g.:
-  /// ```dart
-  /// final dispose = box.listenAll(() => print('mudou'));
-  /// // later
-  /// dispose();
-  /// ```
-  ///
-  /// **PT-BR:** Registra [callback] para ser chamado a cada mutação deste
-  /// container (`write`, `remove`, `erase`), independente da chave.
-  ///
-  /// Retorna um [VoidCallback] que remove o listener, por exemplo:
-  /// ```dart
-  /// final dispose = box.listenAll(() => print('mudou'));
-  /// // depois
-  /// dispose();
-  /// ```
-  VoidCallback listenAll(VoidCallback callback) {
-    _globalListeners.add(callback);
-    return () => _globalListeners.remove(callback);
-  }
-
-  void _notifyKey(String key) {
-    final listeners = _keyListeners[key];
-    if (listeners == null || listeners.isEmpty) return;
-    for (final callback in List<VoidCallback>.of(listeners)) {
-      callback();
-    }
-  }
-
-  void _notifyGlobal() {
-    if (_globalListeners.isEmpty) return;
-    for (final callback in List<VoidCallback>.of(_globalListeners)) {
-      callback();
-    }
   }
 
   void _assertInitialized(String method) {

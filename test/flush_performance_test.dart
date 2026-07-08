@@ -27,7 +27,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 import 'package:all_box/all_box.dart';
 

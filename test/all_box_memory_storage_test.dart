@@ -9,7 +9,7 @@
 // test/all_box_core_test.dart, mas especificamente contra o storage em
 // memória.
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 import 'package:all_box/all_box.dart';
 
@@ -48,28 +48,22 @@ void main() {
       expect(box.getValues(), containsAll(<dynamic>[1, 'two']));
     });
 
-    test('remove() deletes a key and notifies its listeners', () async {
+    test('remove() deletes a key', () async {
       const container = 'memory_remove_test';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
 
       final box = await AllBox.memory(container);
       box.write('k', 'v');
 
-      var notified = 0;
-      box.listenKey('k', () => notified++);
-
       box.remove('k');
-
       expect(box.hasData('k'), isFalse);
-      expect(notified, 1);
 
-      // Removing an already-absent key is a no-op and must not notify.
+      // Removing an already-absent key is a no-op.
       box.remove('k');
-      expect(notified, 1);
+      expect(box.hasData('k'), isFalse);
     });
 
-    test('erase() clears everything and notifies every prior key + global',
-        () async {
+    test('erase() clears everything', () async {
       const container = 'memory_erase_test';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
 
@@ -77,19 +71,9 @@ void main() {
       box.write('a', 1);
       box.write('b', 2);
 
-      var aNotified = 0;
-      var bNotified = 0;
-      var globalNotified = 0;
-      box.listenKey('a', () => aNotified++);
-      box.listenKey('b', () => bNotified++);
-      box.listenAll(() => globalNotified++);
-
       box.erase();
 
       expect(box.getKeys(), isEmpty);
-      expect(aNotified, 1);
-      expect(bNotified, 1);
-      expect(globalNotified, 1);
     });
 
     test('writeAndSave and writeAndFlush both complete without a real Timer',
@@ -121,42 +105,6 @@ void main() {
       // so there's no debounce window to wait out — if this were a
       // disk/Web-backed container, this assertion would need a real delay.
       expect(box.flushCountForTesting, 2);
-    });
-
-    test('listenKey stops firing after removeListenKey', () async {
-      const container = 'memory_listen_key_test';
-      addTearDown(() => AllBox.resetInstanceForTesting(container));
-
-      final box = await AllBox.memory(container);
-
-      var callCount = 0;
-      void callback() => callCount++;
-
-      box.listenKey('k', callback);
-      box.write('k', 1);
-      expect(callCount, 1);
-
-      box.removeListenKey('k', callback);
-      box.write('k', 2);
-      expect(callCount, 1, reason: 'listener must not fire after removal');
-    });
-
-    test('listenAll dispose function removes the global listener', () async {
-      const container = 'memory_listen_all_test';
-      addTearDown(() => AllBox.resetInstanceForTesting(container));
-
-      final box = await AllBox.memory(container);
-
-      var callCount = 0;
-      final dispose = box.listenAll(() => callCount++);
-
-      box.write('x', 1);
-      expect(callCount, 1);
-
-      dispose();
-      box.write('x', 2);
-      expect(callCount, 1,
-          reason: 'global listener must not fire after dispose');
     });
 
     test('resetInstanceForTesting clears the cached singleton', () async {

@@ -12,7 +12,7 @@
 // `@TestOn('browser')` so it's skipped, not compiled, outside a browser
 // platform), and runs via:
 //
-//   flutter test --platform chrome test/web/all_box_web_storage_browser_test.dart
+//   dart test -p chrome test/web/all_box_web_storage_browser_test.dart
 //
 // **PT-BR:** Testes do AllBoxWebStorage: a lógica pura em Dart (codificação/
 // decodificação JSON, nomeação de chave, encapsulamento de erros) por trás
@@ -30,9 +30,9 @@
 // (marcado com `@TestOn('browser')`, então é pulado — sem sequer ser
 // compilado — fora de uma plataforma de navegador), e roda via:
 //
-//   flutter test --platform chrome test/web/all_box_web_storage_browser_test.dart
+//   dart test -p chrome test/web/all_box_web_storage_browser_test.dart
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 import 'package:all_box/src/core/storage/all_box_storage.dart';
 import 'package:all_box/src/core/storage/all_box_storage_exception.dart';

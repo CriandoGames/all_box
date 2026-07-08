@@ -1,18 +1,16 @@
 // Tests for the AllBox core (package:all_box/all_box.dart): pure Dart, no
-// Flutter widgets involved. Flutter-only reactive tests (AllBoxListenable,
-// AllBoxBuilder) live in test/all_box_flutter_test.dart instead.
+// reactivity involved (all_box has no listener/reactive API anymore).
 //
 // **PT-BR:** Testes do core do AllBox (package:all_box/all_box.dart): Dart
-// puro, sem nenhum widget do Flutter envolvido. Os testes reativos
-// exclusivos do Flutter (AllBoxListenable, AllBoxBuilder) ficam em
-// test/all_box_flutter_test.dart.
+// puro, sem nenhuma reatividade envolvida (o all_box não tem mais nenhuma
+// API de listener/reatividade).
 
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 import 'package:all_box/all_box.dart';
 
@@ -247,7 +245,7 @@ void main() {
   });
 
   group('erase()', () {
-    test('notifies every listener whose key existed before clearing', () async {
+    test('clears every key in the container', () async {
       const container = 'erase_test';
       final dir = await _tempDir(container);
       await AllBox.init(container, path: dir.path);
@@ -256,75 +254,9 @@ void main() {
       box.write('a', 1);
       box.write('b', 2);
 
-      var aNotified = 0;
-      var bNotified = 0;
-      var globalNotified = 0;
-
-      box.listenKey('a', () => aNotified++);
-      box.listenKey('b', () => bNotified++);
-      box.listenAll(() => globalNotified++);
-
       box.erase();
 
-      expect(aNotified, 1);
-      expect(bNotified, 1);
-      expect(globalNotified, 1);
       expect(box.getKeys(), isEmpty);
-    });
-  });
-
-  group('listenKey / listenAll lifecycle', () {
-    test('listenKey stops firing after removeListenKey', () async {
-      const container = 'listen_key_test';
-      final dir = await _tempDir(container);
-      await AllBox.init(container, path: dir.path);
-      final box = AllBox(container);
-
-      var callCount = 0;
-      void callback() => callCount++;
-
-      box.listenKey('k', callback);
-      box.write('k', 1);
-      expect(callCount, 1);
-
-      box.removeListenKey('k', callback);
-      box.write('k', 2);
-      expect(callCount, 1, reason: 'listener must not fire after removal');
-    });
-
-    test('listenAll dispose function removes the listener (no leak)', () async {
-      const container = 'listen_all_test';
-      final dir = await _tempDir(container);
-      await AllBox.init(container, path: dir.path);
-      final box = AllBox(container);
-
-      var callCount = 0;
-      final dispose = box.listenAll(() => callCount++);
-
-      box.write('x', 1);
-      expect(callCount, 1);
-
-      dispose();
-      box.write('x', 2);
-      expect(callCount, 1,
-          reason: 'global listener must not fire after dispose');
-    });
-  });
-
-  group('.val() extension', () {
-    test('reads defaults and persists writes without any DI coupling',
-        () async {
-      const container = 'val_extension_test';
-      final dir = await _tempDir(container);
-      await AllBox.init(container, path: dir.path);
-      final box = AllBox(container);
-
-      final darkMode = 'darkMode'.val(false, box: box);
-      expect(darkMode.value, isFalse);
-
-      darkMode.value = true;
-      expect(darkMode.value, isTrue);
-      expect(box.read<bool>('darkMode'), isTrue);
     });
   });
 
@@ -333,9 +265,9 @@ void main() {
       const container = 'memory_backend_test';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
 
-      await AllBox.initWithMemoryBackendForTesting(
+      await AllBox.memory(
         container,
-        initialValues: {'seeded': 'value'},
+        initialData: {'seeded': 'value'},
       );
       final box = AllBox(container);
 
@@ -383,19 +315,17 @@ void main() {
   group('write() serialization guard', () {
     test(
         'writes a non-JSON-encodable value to memory anyway, without '
-        'throwing (matches GetStorage\'s permissive behavior; only a debug '
-        'warning is logged)', () async {
+        'throwing (only a debug warning is logged)', () async {
       const container = 'serialization_guard_test';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
 
       await AllBox.initWithMemoryBackendForTesting(container);
       final box = AllBox(container);
 
-      // DateTime has no built-in toJson(); jsonEncode() rejects it. This no
-      // longer throws — it's only ever reported via a debug-mode
-      // debug log, same as GetStorage never blocking a write() call for
-      // this. It will still silently fail to reach disk once a real,
-      // disk-backed flush actually tries to jsonEncode() it.
+      // DateTime has no built-in toJson(); jsonEncode() rejects it. This
+      // never throws — it's only ever reported via a debug-mode debug log.
+      // It will still silently fail to reach disk once a real, disk-backed
+      // flush actually tries to jsonEncode() it.
       expect(() => box.write('when', DateTime.now()), returnsNormally);
       expect(box.hasData('when'), isTrue);
     });
