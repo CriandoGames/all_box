@@ -27,7 +27,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 import 'package:all_box/all_box.dart';
 
@@ -577,6 +577,56 @@ void main() {
       expect(reloaded.read<String>('key_0'), 'value_0');
       expect(reloaded.read<String>('key_2500'), 'value_2500');
       expect(reloaded.read<String>('key_4999'), 'value_4999');
+    });
+
+    test('a large single value (~200 KB string) flushes and reloads intact',
+        () async {
+      const container = 'roundtrip_large_value';
+      final dir = await _tempDir(container);
+      await AllBox.init(container, path: dir.path);
+      final box = AllBox(container);
+
+      final bigValue = 'x' * (200 * 1024);
+      await box.writeAndFlush('blob', bigValue);
+
+      AllBox.resetInstanceForTesting(container);
+      await AllBox.init(container, path: dir.path);
+      final reloaded = AllBox(container);
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      expect(reloaded.read<String>('blob'), bigValue);
+    });
+
+    test('reading 5,000 keys back after init stays fast (regression guard, '
+        'not a strict benchmark)', () async {
+      const container = 'roundtrip_large_read_perf';
+      final dir = await _tempDir(container);
+      await AllBox.init(container, path: dir.path);
+      final box = AllBox(container);
+
+      for (var i = 0; i < 5000; i++) {
+        box.write('key_$i', i);
+      }
+      await box.flushNow();
+
+      AllBox.resetInstanceForTesting(container);
+      await AllBox.init(container, path: dir.path);
+      final reloaded = AllBox(container);
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      final stopwatch = Stopwatch()..start();
+      var sum = 0;
+      for (var i = 0; i < 5000; i++) {
+        sum += reloaded.read<int>('key_$i') ?? 0;
+      }
+      stopwatch.stop();
+
+      expect(sum, greaterThan(0));
+      // Generous ceiling for CI variance — reads are synchronous, in-memory
+      // Map lookups after init, so this should be near-instant; this is a
+      // regression guard against read<T>() accidentally becoming O(n) per
+      // call, not a precise timing assertion.
+      expect(stopwatch.elapsedMilliseconds, lessThan(1000));
     });
 
     test('randomized mutation stress: disk always matches a shadow map',

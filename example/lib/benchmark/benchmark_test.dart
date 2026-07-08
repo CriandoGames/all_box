@@ -11,7 +11,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'benchmark.dart' as bench;
+import '../../../benchmark/benchmark.dart' as bench;
 
 void main() {
   test(

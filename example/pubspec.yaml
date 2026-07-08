@@ -25,10 +25,10 @@ dependencies:
   # sem dependências.
   hive: ^2.2.3
   shared_preferences: ^2.3.0
-
-dev_dependencies:
   flutter_test:
     sdk: flutter
+
+dev_dependencies:
   flutter_lints: ^5.0.0
 
 flutter:

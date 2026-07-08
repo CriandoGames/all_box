@@ -20,10 +20,10 @@ de grandeza, não como benchmark oficial de nenhuma das bibliotecas citadas.
 | Escrita | Otimista + debounced; `writeAndSave()` (aguarda o OS) e `writeAndFlush()` (fsync) para confirmar em disco | Otimista, sem debounce configurável exposto; nenhuma API espera o disco | Assíncrona por padrão (`box.put`), com `flush()` manual | Assíncrona, com transações explícitas | Assíncrona, uma escrita completa do arquivo por chamada em algumas plataformas |
 | Crash-safety | Write-ahead (`.tmp`) + rename atômico + `.bak` de fallback, documentado | Não documentado publicamente com o mesmo nível de detalhe | WAL/compaction interno (Hive 2), depende da versão | WAL via engine própria (Isar Core, Rust) | Depende inteiramente da implementação nativa da plataforma |
 | `path` de armazenamento | Explícito, obrigatório em `init()` — nunca resolvido internamente | Resolvido internamente (usa `path_provider`/`GetStorage` defaults) | Resolvido pelo chamador (`Hive.init(path)`) | Resolvido pelo chamador (`Isar.open(directory: ...)`) | Resolvido internamente pela plataforma |
-| Reatividade | `AllBoxListenable`/`AllBoxBuilder`, 100% Flutter (`ChangeNotifier`/`ValueListenable`) | `GetBuilder`/`Obx` (acoplado ao ecossistema GetX) | `ValueListenableBuilder` sobre `box.listenable()` | `watchObject`/`watchLazy` (streams) | Nenhuma — precisa de wrapper próprio |
-| Suporte a Web | Não (v1) | Sim | Sim | Sim (via WASM) | Sim |
+| Reatividade | Nenhuma — traga a sua (`setState`, um `ChangeNotifier` seu, `all_observer`, ...) | `GetBuilder`/`Obx` (acoplado ao ecossistema GetX) | `ValueListenableBuilder` sobre `box.listenable()` | `watchObject`/`watchLazy` (streams) | Nenhuma — precisa de wrapper próprio |
+| Suporte a Web | Sim (`window.localStorage` via `dart:js_interop`) | Sim | Sim | Sim (via WASM) | Sim |
 | Curva de aprendizado | Baixa | Baixa | Média | Média–alta (schema, queries, codegen) | Baixa |
-| Escopo | Só storage key-value + reatividade | Storage + parte de UI utilities (GetX) | Storage orientado a boxes/objetos | Banco de dados embarcado completo (queries, índices, relações) | Wrapper fino sobre preferências nativas da plataforma |
+| Escopo | Só storage key-value | Storage + parte de UI utilities (GetX) | Storage orientado a boxes/objetos | Banco de dados embarcado completo (queries, índices, relações) | Wrapper fino sobre preferências nativas da plataforma |
 
 ## Desempenho (medido no dispositivo, modo profile)
 
@@ -94,9 +94,9 @@ alegação sobre a robustez interna do `GetStorage`.
 Um banco de dados key-value baseado em boxes com um formato de arquivo
 próprio, suporte nativo a Web, e adapters para tipos customizados. Melhor
 escolha quando você precisa guardar objetos Dart complexos com um mínimo de
-serialização manual, ou precisa rodar no navegador. `all_box` só lida com
-valores JSON-encodáveis simples (mapeados para um único arquivo JSON por
-container) — sem adapters, sem suporte a Web nesta v1.
+serialização manual. `all_box` só lida com valores JSON-encodáveis simples
+(mapeados para um único arquivo JSON por container no IO, ou uma chave
+`localStorage` na Web) — sem adapters.
 
 ## Isar
 
@@ -115,25 +115,25 @@ O wrapper de plataforma "oficial" do Flutter sobre `UserDefaults`
 plataformas. Onipresente e simples, mas assíncrono do início ao fim e
 limitado a tipos primitivos (sem listas/mapas aninhados sem serialização
 manual). `all_box` cobre o mesmo caso de uso central (configurações, flags,
-pequenos estados) com leitura síncrona pós-init e uma camada reativa
-embutida — trocando a implementação nativa por plataforma por um arquivo
-JSON único gerenciado inteiramente pelo Dart.
+pequenos estados) com leitura síncrona pós-init — trocando a implementação
+nativa por plataforma por um arquivo JSON único gerenciado inteiramente
+pelo Dart.
 
 ## Por que escolher `all_box`
 
 Use quando você quer um storage chave-valor simples — configurações, flags,
 pequenos estados de app — com leituras síncronas depois do boot, escrita
-otimista com opção de confirmação durável explícita, uma camada reativa
-sem dependências externas de gerenciamento de estado, e controle total e
+otimista com opção de confirmação durável explícita, e controle total e
 explícito de onde os dados vivem no disco (`path` obrigatório, nunca
-resolvido por mágica interna).
+resolvido por mágica interna). O `all_box` não tem nenhuma API
+reativa/de listener própria — conecte as atualizações a um `setState`, um
+`ChangeNotifier` seu, ao `all_observer`, ou ao que seu app já usar.
 
 Escolha outra coisa quando precisar especificamente do que ela faz de
-melhor: suporte a Web e adapters de tipo customizado (Hive), um banco de
-dados embarcado completo com queries/índices/relações (Isar), ou só o
+melhor: adapters de tipo customizado para objetos complexos (Hive), um
+banco de dados embarcado completo com queries/índices/relações (Isar), o
 wrapper de plataforma mais "padrão" do ecossistema Flutter
-(SharedPreferences) para um app pequeno que não precisa de nenhuma
-reatividade embutida.
+(SharedPreferences), ou uma lib de storage com reatividade embutida.
 
 ---
 

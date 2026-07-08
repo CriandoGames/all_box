@@ -1,4 +1,4 @@
-import 'package:all_box/all_box_flutter.dart';
+import 'package:all_box/all_box.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -36,11 +36,13 @@ class AllBoxExampleApp extends StatelessWidget {
 /// Demonstrates the whole public surface used day to day:
 ///  - `AllBox()` factory (singleton per container name)
 ///  - `write()` (optimistic + debounced) vs `writeAndFlush()`
-///  - `AllBoxBuilder<T>` for a reactive widget with no `Obx`/`get`
-///  - `listenAll` for a global side-effect (a SnackBar) outside the widget
-///    that owns the value
+///  - `erase()`
 ///  - `flushNow()` from `AppLifecycleState.paused`, so nothing pending is
 ///    lost if the OS kills the process in the background.
+///
+/// `all_box` has no reactive/listener API — the UI updates by calling
+/// `setState` right after each `write()`/`writeAndFlush()`/`erase()` call,
+/// same as you would with any other synchronous, non-reactive storage.
 class CounterPage extends StatefulWidget {
   const CounterPage({super.key});
 
@@ -50,16 +52,13 @@ class CounterPage extends StatefulWidget {
 
 class _CounterPageState extends State<CounterPage> with WidgetsBindingObserver {
   final AllBox _box = AllBox('example_box');
-  VoidCallback? _disposeGlobalListener;
+  late int _counter;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
-    _disposeGlobalListener = _box.listenAll(() {
-      debugPrint('all_box: container "example_box" changed');
-    });
+    _counter = _box.readOrDefault<int>('counter', 0);
   }
 
   @override
@@ -74,25 +73,31 @@ class _CounterPageState extends State<CounterPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _disposeGlobalListener?.call();
     super.dispose();
   }
 
   void _increment() {
-    final current = _box.readOrDefault<int>('counter', 0);
-    // Fire-and-forget: memory + listeners update synchronously; disk
-    // catches up ~100ms later, debounced.
-    _box.write('counter', current + 1);
+    final next = _counter + 1;
+    // Fire-and-forget: memory updates synchronously; disk catches up ~100ms
+    // later, debounced.
+    _box.write('counter', next);
+    setState(() => _counter = next);
   }
 
   Future<void> _incrementAndWaitForDisk() async {
-    final current = _box.readOrDefault<int>('counter', 0);
-    await _box.writeAndFlush('counter', current + 1);
+    final next = _counter + 1;
+    await _box.writeAndFlush('counter', next);
     if (mounted) {
+      setState(() => _counter = next);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Persisted to disk.')),
       );
     }
+  }
+
+  void _erase() {
+    _box.erase();
+    setState(() => _counter = 0);
   }
 
   @override
@@ -116,15 +121,11 @@ class _CounterPageState extends State<CounterPage> with WidgetsBindingObserver {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Value of "counter" (reactive, no Obx/get):'),
+            const Text('Value of "counter":'),
             const SizedBox(height: 8),
-            AllBoxBuilder<int>(
-              keyName: 'counter',
-              box: _box,
-              builder: (context, value) => Text(
-                '${value ?? 0}',
-                style: Theme.of(context).textTheme.displayMedium,
-              ),
+            Text(
+              '$_counter',
+              style: Theme.of(context).textTheme.displayMedium,
             ),
             const SizedBox(height: 24),
             Row(
@@ -141,7 +142,7 @@ class _CounterPageState extends State<CounterPage> with WidgetsBindingObserver {
                 ),
                 const SizedBox(width: 12),
                 TextButton(
-                  onPressed: _box.erase,
+                  onPressed: _erase,
                   child: const Text('erase()'),
                 ),
               ],

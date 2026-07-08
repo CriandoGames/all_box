@@ -12,7 +12,7 @@ família.
 2. Instale as dependências:
 
    ```bash
-   flutter pub get
+   dart pub get
    ```
 
 3. Crie uma branch a partir da `main`:
@@ -24,14 +24,14 @@ família.
 ## Rodando os testes
 
 ```bash
-flutter test
+dart test
 ```
 
 Toda mudança em `lib/` deve vir acompanhada de teste(s) correspondente(s) em
 `test/`. Os testes existentes cobrem cenários específicos de crash-safety
-(arquivo corrompido, JSON inválido, fallback para `.bak`), debounce de
-escrita e lifecycle de listeners — mantenha esse padrão de cobertura ao
-adicionar funcionalidades novas.
+(arquivo corrompido, JSON inválido, fallback para `.bak`) e debounce de
+escrita — mantenha esse padrão de cobertura ao adicionar funcionalidades
+novas.
 
 ## Rodando o app de exemplo
 
@@ -48,10 +48,10 @@ para demonstrá-la.
 
 ```bash
 dart format .
-flutter analyze
+dart analyze
 ```
 
-Nenhum PR deve introduzir warnings do `flutter analyze` nem quebrar a
+Nenhum PR deve introduzir warnings do `dart analyze` nem quebrar a
 formatação padrão do `dart format`.
 
 ## Escopo do pacote
@@ -59,9 +59,12 @@ formatação padrão do `dart format`.
 Alguns princípios de design são inegociáveis e qualquer mudança que os
 contrarie provavelmente será recusada:
 
-- **Camada reativa 100% Flutter.** `AllBoxListenable`/`AllBoxBuilder` devem
-  continuar construídos sobre `ChangeNotifier`/`ValueListenable`, sem
-  dependências externas de gerenciamento de estado.
+- **Sem reatividade embutida.** `all_box` é Dart puro e não deve ganhar de
+  volta nenhuma API de listener/reatividade (nem `AllBoxListenable`/
+  `AllBoxBuilder`, nem `listenKey`/`listenAll`) nem voltar a depender do
+  Flutter SDK no `pubspec.yaml`. Se você precisa de reatividade no seu app,
+  conecte `all_box` a um `setState`, a um `ChangeNotifier` seu, ao
+  `all_observer`, ou ao que já usar.
 - **`path` continua explícito.** `AllBox` não deve importar `path_provider`
   nem resolver diretório algum internamente.
 - **Crash-safety não é opcional.** Qualquer mudança na camada de persistência
@@ -70,7 +73,7 @@ contrarie provavelmente será recusada:
 
 ## Enviando o Pull Request
 
-1. Garanta que `flutter test` e `flutter analyze` passam localmente.
+1. Garanta que `dart test` e `dart analyze` passam localmente.
 2. Descreva o que mudou e por quê — inclua o cenário de bug ou a
    funcionalidade motivadora, se aplicável.
 3. Referencie issues relacionadas, quando existirem.
