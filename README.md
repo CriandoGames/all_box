@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/tests-19-brightgreen" alt="19 tests">
+  <img src="https://img.shields.io/badge/tests-78-brightgreen" alt="78 tests">
 </p>
 
 <p align="center">
@@ -23,6 +23,7 @@
 - [Example App](#-example-app)
 - [Features in detail](#️-features-in-detail)
 - [Usage examples](#-usage-examples)
+- [Separating data by user or context](#-separating-data-by-user-or-context)
 - [API](#-api)
 - [Design decisions](#️-design-decisions)
 - [Known limitations](#️-known-limitations-documented-not-hidden)
@@ -72,7 +73,7 @@ flutter pub add all_box
 
 ```yaml
 dependencies:
-  all_box: ^0.2.1
+  all_box: ^0.3.0
 ```
 
 Dart-only code (no Flutter widgets) needs just the core:
@@ -303,6 +304,86 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 }
 ```
+
+## 🧩 Separating data by user or context
+
+`all_box` doesn't ship a dedicated "scope", "namespace" or "collection" API
+— that's on purpose, to keep the surface small. In real apps you still need
+to separate local data by who it belongs to: the logged-in user, an
+account, a gym, a company, a session, or just app-wide state. Two patterns
+cover this well with the API that already exists.
+
+**A different container per context.** `AllBox.init(container, ...)` takes
+an arbitrary container name, and each name is a fully isolated storage —
+its own file on IO, its own `localStorage` key on Web:
+
+```dart
+final appBox = await AllBox.init('app_settings', path: dir.path);
+final userBox = await AllBox.init('user_$userId', path: dir.path);
+```
+
+Erasing or clearing one container never touches the other. This fits well
+when the number of contexts is small and known ahead of time — e.g. one
+container per logged-in user, plus one for app-wide settings.
+
+**Key prefixes inside a single container.** When contexts are more
+dynamic, or you'd rather keep everything in one place, prefixing keys works
+just as well:
+
+```dart
+final userId = 'user_123';
+
+box.write('user:$userId:theme', 'dark');
+box.write('user:$userId:profile', profile);
+
+final theme = box.read<String>('user:$userId:theme');
+```
+
+```dart
+box.write('app:last_logged_user', userId);
+box.write('app:language', 'pt-BR');
+
+final language = box.read<String>('app:language');
+```
+
+A good practice is to separate keys by context. This helps avoid data
+conflicts and makes it easier to remove information from a specific user
+without deleting global app settings.
+
+This separation is useful for:
+
+- apps with multiple logged-in users on the same device;
+- multi-tenant/SaaS apps (company, gym, organization);
+- caching API responses per account;
+- local preferences per user profile;
+- safely wiping a user's data on logout, without touching global settings;
+- keeping temporary session data apart from persistent app state.
+
+For larger projects, consider centralizing key names in a dedicated class
+to avoid scattered strings across the app:
+
+```dart
+class StorageKeys {
+  static String userTheme(String userId) => 'user:$userId:theme';
+  static String userProfile(String userId) => 'user:$userId:profile';
+
+  static const appLanguage = 'app:language';
+  static const lastLoggedUser = 'app:last_logged_user';
+}
+```
+
+```dart
+box.write(StorageKeys.userTheme(userId), 'dark');
+
+final theme = box.read<String>(
+  StorageKeys.userTheme(userId),
+);
+```
+
+Either pattern keeps `all_box` doing what it's meant for — preferences,
+local settings, small app state and micro caches — not a replacement for a
+full embedded database with queries, indexes or relations (see
+[When to use it](#-when-to-use-it-and-when-not-to)).
 
 ## 📚 API
 
