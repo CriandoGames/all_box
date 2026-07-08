@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-💡 Synchronous, lightweight and fast key-value storage, pure Dart, with crash-safe writes.
+💡 Simple, synchronous key-value storage for Dart and Flutter, with a crash-safe write strategy.
 </p>
 
 ## Table of contents
@@ -21,12 +21,11 @@
 - [Features](#-features)
 - [Installing](#-installing)
 - [Example App](#-example-app)
-- [Features in detail](#️-features-in-detail)
 - [Usage examples](#-usage-examples)
+- [Need reactivity?](#-need-reactivity)
 - [Separating data by user or context](#-separating-data-by-user-or-context)
 - [API](#-api)
-- [Design decisions](#️-design-decisions)
-- [Known limitations](#️-known-limitations-documented-not-hidden)
+- [How it works](#️-how-it-works)
 - [Comparison](#-comparison)
 - [When to use it (and when not to)](#-when-to-use-it-and-when-not-to)
 - [Testing](#-testing)
@@ -35,29 +34,22 @@
 
 ## 🚀 Features
 
-- 🪶 **100% synchronous reads.** After `init()`, every `read<T>()` is
-  synchronous — no `Future`, no `FutureBuilder`, no I/O wait on the read
-  path.
-- 🧱 **Pure Dart, zero Flutter dependency.** `package:all_box/all_box.dart`
-  has no Flutter import at all — `all_box` works in any Dart environment
-  (CLI, server, Flutter app), and has no reactive/listener API of its own.
-- 🛡️ **Real crash-safety.** Every write lands on a `.tmp` file first, then
-  an atomic rename replaces the main file (`.db`); a `.bak` of the last good
-  state is kept separately, with automatic two-stage fallback (UTF-8
-  decoding errors and `jsonDecode` errors).
-- 📍 **Explicit `path`, never resolved internally.** `AllBox` never imports
-  `path_provider` nor resolves any directory — whoever calls `init()`
-  decides where the container lives. This avoids, by construction, the
-  plugin/Activity resolution bugs that affect libraries that resolve the
-  path by default.
-- ⚡ **Optimistic, debounced writes**, with `writeAndSave()` (waits for the
-  OS write) and `writeAndFlush()`/`flushNow()` (waits for `fsync`) for the
-  moments you need a stronger, immediate on-disk guarantee.
-- 🧪 **In-memory storage for testing.** `AllBox.memory()` runs with no real
-  I/O and no real `Timer`, safe for `testWidgets`.
-- 🌐 **Web support.** `AllBox.init('settings')` (no `path`) automatically
-  uses `window.localStorage` on Web, via `dart:js_interop` — never
-  `dart:html` (which blocks `dart2wasm` compilation).
+- 🪶 **Synchronous reads.** After `init()`, every `read<T>()` is
+  synchronous — no `Future`, no `FutureBuilder`.
+- 🧱 **Pure Dart, zero Flutter dependency.** Works in any Dart environment
+  — CLI, server, or Flutter app.
+- 🛡️ **Crash-safe write strategy.** Designed to avoid partially-written
+  files on IO platforms. See [How it works](#️-how-it-works).
+- 📍 **Explicit `path`, never resolved internally.** You decide where the
+  container lives — no internal `path_provider` dependency, so no
+  plugin/Activity resolution surprises.
+- ⚡ **Optimistic, debounced writes**, with opt-in stronger durability
+  tiers (`writeAndSave()`, `writeAndFlush()`) when you need them.
+- 🧪 **In-memory storage for testing.** `AllBox.memory()` — no real I/O,
+  no real `Timer`.
+- 🌐 **Web support**, backed by `window.localStorage`.
+- 🔌 **No built-in reactivity.** Bring your own — see
+  [Need reactivity?](#-need-reactivity).
 
 Part of the `all_*` family of open-source packages alongside
 [`all_validations_br`](https://pub.dev/packages/all_validations_br)
@@ -72,7 +64,7 @@ dart pub add all_box
 
 ```yaml
 dependencies:
-  all_box: ^0.3.0
+  all_box: ^0.4.0
 ```
 
 `all_box` is pure Dart and has a single entrypoint:
@@ -97,19 +89,12 @@ I/O at all:
 final box = await AllBox.memory('settings', initialData: {'darkMode': true});
 ```
 
-`all_box` has no reactive/listener API of its own: in a Flutter app, update
-your UI by calling `setState` (or your state-management solution of choice)
-right after `write()`/`writeAndFlush()`/`erase()`, same as with any other
-synchronous, non-reactive storage.
-
 ## 📱 Example App
 
 The `example/` directory contains an interactive Flutter app (`CounterPage`)
-demonstrating the whole day-to-day public surface: optimistic `write()` vs.
+demonstrating the day-to-day public surface: optimistic `write()` vs.
 `writeAndFlush()`, `erase()`, and `flushNow()` fired on
 `AppLifecycleState.paused`.
-
-To run it:
 
 ```bash
 cd example
@@ -117,7 +102,7 @@ flutter pub get
 flutter run
 ```
 
-## ⚙️ Features in detail
+## 🧪 Usage examples
 
 ### Initialization
 
@@ -128,9 +113,6 @@ import 'package:path_provider/path_provider.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // AllBox never resolves its own directory — you do, after the binding is
-  // ready. Any path strategy works. Not needed on Web: `path` is ignored
-  // there, since AllBox automatically uses `window.localStorage`.
   final dir = await getApplicationDocumentsDirectory();
   await AllBox.init('my_container', path: dir.path);
 
@@ -138,45 +120,35 @@ Future<void> main() async {
 }
 ```
 
-Which storage is used is resolved automatically from the compile target:
-Web always uses `window.localStorage`; every other (IO) target uses the
-`path` you provide. There's also an advanced `storage:` argument to plug in
-your own `AllBoxStorage` implementation, but everyday code never needs it.
+`path` is required on IO platforms and ignored on Web (`AllBox` never
+resolves it for you). There's also an advanced `storage:` argument to plug
+in your own `AllBoxStorage` implementation, but everyday code never needs
+it.
 
-### Seeding data on first run (`initialData`)
+### Seeding data on first run
 
 ```dart
 await AllBox.init(
   'settings',
   path: dir.path,
-  initialData: const {
-    'darkMode': false,
-    'onboarded': false,
-  },
+  initialData: const {'darkMode': false, 'onboarded': false},
 );
 ```
 
-`initialData` only applies on a genuine first run — when the container
-doesn't yet have `<container>.db`/`<container>.bak` on disk. It's persisted
-immediately (it doesn't wait for the debounce), so it survives a crash
-right after the app's first launch. If the container already existed
-before — even as an empty `{}` left by a previous `erase()` — `initialData`
-is ignored and whatever is on disk wins.
+`initialData` only applies the first time a container is created — see
+[How it works](#️-how-it-works) for the exact rule.
 
-### Reading and writing (every read is synchronous)
+### Reading and writing
 
 ```dart
 final box = AllBox('my_container');
 
-box.write('name', 'Carlos');           // optimistic: memory updates
-                                        // immediately, disk follows
-                                        // ~100ms later (debounced)
-
+box.write('name', 'Carlos');               // optimistic + debounced
 String? name = box.read<String>('name');
 String safeName = box.readOrDefault<String>('name', 'anonymous');
 
-await box.writeAndSave('name', 'Carlos');  // waits for the OS write (no fsync)
-await box.writeAndFlush('name', 'Carlos'); // waits for fsync (disk confirmation)
+await box.writeAndSave('name', 'Carlos');  // waits for the OS write
+await box.writeAndFlush('name', 'Carlos'); // waits for disk confirmation
 
 box.remove('name');
 box.erase(); // clears everything
@@ -184,21 +156,12 @@ box.erase(); // clears everything
 await box.flushNow(); // forces a flush now, e.g. on AppLifecycleState.paused
 ```
 
-## 🧪 Usage examples
-
 ### Value with a safe fallback
 
 ```dart
 final box = AllBox('settings');
 final theme = box.readOrDefault<String>('theme', 'light');
 // Returns 'light' if the 'theme' key doesn't exist yet
-```
-
-### Optimistic write vs. confirmed write
-
-```dart
-box.write('score', 100);              // memory updated immediately
-await box.writeAndFlush('score', 100); // only returns after disk confirms
 ```
 
 ### Updating a widget after a write
@@ -249,6 +212,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 }
 ```
+
+## 🔌 Need reactivity?
+
+`all_box` intentionally does not ship a reactive layer. It stays focused
+on storage. If you want reactive state for Flutter, use
+[`all_observer`](https://pub.dev/packages/all_observer) with
+`Observer(...)` and keep storage and UI state separated — or wire `all_box`
+into a `ChangeNotifier`/state-management solution you already use.
 
 ## 🧩 Separating data by user or context
 
@@ -317,14 +288,6 @@ class StorageKeys {
 }
 ```
 
-```dart
-box.write(StorageKeys.userTheme(userId), 'dark');
-
-final theme = box.read<String>(
-  StorageKeys.userTheme(userId),
-);
-```
-
 Either pattern keeps `all_box` doing what it's meant for — preferences,
 local settings, small app state and micro caches — not a replacement for a
 full embedded database with queries, indexes or relations (see
@@ -335,87 +298,29 @@ full embedded database with queries, indexes or relations (see
 | Member | Description |
 | --- | --- |
 | `AllBox([container])` | Factory constructor; returns a singleton per container name. |
-| `static AllBox.init(container, {path, flushDelay, initialData, storage})` | Loads `container` into memory and returns the initialized `AllBox`. `path` is required on IO platforms, ignored on Web. `initialData` seeds default values, but only on a genuine first run. `storage` is an advanced override — see below. |
+| `static AllBox.init(container, {path, flushDelay, initialData, storage})` | Loads `container` into memory and returns the initialized `AllBox`. `path` is required on IO platforms, ignored on Web. |
 | `static AllBox.memory(container, {initialData})` | Recommended way to test code that consumes `all_box`: no real I/O, no real `Timer`. Replaces the deprecated `initWithMemoryBackendForTesting`. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Synchronous reads. |
-| `void write(key, value)` | Optimistic, debounced write. In debug mode, warns (via a red `debugPrint`) if `value` isn't JSON-encodable, but never throws. |
-| `Future<void> writeAndSave(key, value)` | Writes and waits for the OS write to complete (no forced `fsync`) — survives an app crash, cheaper than `writeAndFlush()`. Same serialization warning as `write()`. |
-| `Future<void> writeAndFlush(key, value)` | Writes and waits for the strongest durability guarantee (`fsync` on IO). Same serialization warning as `write()`. |
+| `void write(key, value)` | Optimistic, debounced write. |
+| `Future<void> writeAndSave(key, value)` | Writes and waits for the OS write to complete. |
+| `Future<void> writeAndFlush(key, value)` | Writes and waits for the strongest durability guarantee available. |
 | `void remove(key)` / `void erase()` | Removes a key / clears everything. |
 | `Future<void> flushNow()` | Forces an immediate flush, bypassing the debounce window. |
 | `hasData(key)`, `getKeys()`, `getValues()` | Introspection. |
 
-### Why is `path` required on IO, but not on Web?
+## 🛠️ How it works
 
-`AllBox` **never** imports `path_provider` (nor resolves any directory)
-internally. On IO platforms the caller always decides where the container
-lives — that's a deliberate design choice, not an oversight (see the
-section below). On Web there's nothing to resolve: `window.localStorage` is
-always at a fixed, well-known location, so `path` simply doesn't apply
-there and is silently ignored if you pass one anyway (handy for code shared
-across IO and Web).
+`all_box` keeps a short list of deliberate design choices:
 
-## 🛠️ Design decisions
+- **`path` is always explicit on IO, automatic on Web.** No internal
+  directory resolution, no plugin dependency.
+- **`initialData` only ever applies on a genuine first run.**
+- **No built-in reactivity** — see [Need reactivity?](#-need-reactivity).
 
-- **Explicit `path` on IO, automatic storage on Web.** `all_box` never
-  resolves a directory internally on IO — whoever calls `init()` always
-  supplies `path` there, avoiding any plugin resolution inside the library.
-  On Web, storage is resolved automatically to `window.localStorage`, since
-  there's no meaningful "path" to ask the caller for.
-- **`initialData` only applies on a genuine first run.** The check is done
-  via the presence of `<container>.db`/`<container>.bak` on disk, not
-  in-memory state — a container emptied by `erase()` still has a persisted
-  `{}`, so it's not considered a "first run" and the seed isn't reapplied
-  over it.
-- **Crash-safety via write-ahead + atomic rename**, with a serialized
-  flush queue shared across every storage backend (IO, Web, in-memory, or
-  your own). Full pipeline details in
-  [Internal architecture](documentation/en/architecture.md).
-- **No built-in reactivity.** `all_box` has no listener/reactive API of its
-  own — `write()`, `remove()` and `erase()` only update memory and schedule
-  persistence. This keeps the core surface small and avoids coupling to any
-  particular state-management approach; wire it up to `setState`, a
-  `ChangeNotifier` you own, `all_observer`, or whatever your app already
-  uses.
-- **Reproducible benchmark.** Performance numbers measured on-device and
-  maintained in this repository — see the [Comparison](#-comparison)
-  section; reproduce them yourself with the example app
-  (`cd example && flutter run --profile`, then tap the ⚡ icon) or run the
-  package's own micro-benchmark with
-  `flutter test benchmark/benchmark_test.dart`.
-- **Debug-only serialization warning, not an exception.**
-  `write()`/`writeAndFlush()` call `jsonEncode` on the value on the spot,
-  debug-only, and emit a red `debugPrint` if it isn't serializable — but
-  never throw or block the write. The value is still written to memory
-  normally; if it truly can't be encoded, the failure only resurfaces
-  silently deep inside the flush.
-- **Web support via `dart:js_interop`, never `dart:html`** (see
-  [Internal architecture](documentation/en/architecture.md) for why, and
-  the limitations below for what that backend can and can't do).
-
-## ⚠️ Known limitations (documented, not hidden)
-
-- **Web storage (`localStorage`) has real limits.** There's no `fsync`
-  equivalent — `save` and `flush` behave identically on Web, since a
-  `localStorage.setItem` call is already synchronous. Storage is scoped per
-  browser *origin* (scheme + host + port), so `http://localhost:3000` and
-  `http://localhost:4000` see completely different storages during local
-  development. Size limits vary by browser (commonly a few MB per origin)
-  and aren't enforced or reported by `AllBox` ahead of time — a write past
-  the limit throws an `AllBoxStorageException`. Data isn't encrypted:
-  don't store secrets or sensitive data in a Web container without
-  encrypting it yourself first. Not recommended for large volumes of data.
-- **Not isolate-safe.** Each `AllBox` keeps its state in memory in the
-  isolate where it was initialized; there's no cross-isolate
-  synchronization. If you use multiple isolates (e.g. `compute()`,
-  background isolates), each one needs its own `init()` and they won't see
-  each other's writes until they re-read from disk.
-- **`File.rename` for the atomic swap is OS-dependent.** On POSIX
-  (Linux/macOS/Android/iOS), renaming over an existing file is atomic. On
-  Windows, behavior can vary between Dart SDK versions; test this scenario
-  specifically if your app runs on Windows desktop.
-- **No built-in reactivity.** `write()`, `remove()` and `erase()` don't
-  notify anything — see [Design decisions](#️-design-decisions) above.
+The write-ahead + atomic-rename pipeline, flush/debounce coordination, the
+`dart:js_interop` Web backend, and the full list of known limitations
+(Web storage limits, isolate-safety, `File.rename` portability) are
+documented in [Internal architecture](documentation/en/architecture.md).
 
 ## ⚖️ Comparison
 
@@ -423,7 +328,7 @@ across IO and Web).
 |---|---|---|---|---|---|
 | Reads | Synchronous, in memory | Synchronous, in memory | Synchronous (open box) | Synchronous (simple) / async (queries) | Async |
 | Storage `path` | Explicit, required | Resolved internally | Resolved by caller | Resolved by caller | Resolved by platform |
-| Documented crash-safety | Write-ahead + atomic rename + `.bak` | Not documented at the same level | Internal WAL/compaction | WAL via its own engine | Platform-dependent |
+| Crash-safety strategy | Write-ahead + atomic rename + `.bak`, documented | Not documented at the same level | Internal WAL/compaction | WAL via its own engine | Platform-dependent |
 | Web support | Yes (`localStorage`) | Yes | Yes | Yes | Yes |
 | Reactivity | None (bring your own) | `GetBuilder`/`Obx` (GetX) | `ValueListenableBuilder` over `box.listenable()` | `watchObject`/`watchLazy` (streams) | None — needs your own wrapper |
 | Scope | Key-value storage only | Storage + some UI utils (GetX) | Box-oriented storage | Full database | Platform wrapper |
@@ -431,26 +336,24 @@ across IO and Web).
 ![Performance comparison: all_box vs. Hive and SharedPreferences, measured on-device in profile mode](doc/comparison_benchmark_en.png)
 
 Measured on-device (Android, profile mode) via the example app's "Storage
-comparison" screen — median of multiple rounds, same session and same
-loops for every lib. The fsync row has a single bar because only `all_box`
-offers that guarantee (`writeAndFlush()`).
+comparison" screen. Full methodology, numbers, and per-library caveats in
+[Comparison](documentation/en/comparison.md).
 
 `all_box` intentionally doesn't try to be a database or resolve its own
 `path` — that's a design choice, not a gap.
-[Full, detailed comparison, including a performance benchmark, here](documentation/en/comparison.md).
 
 ## 🤔 When to use it (and when not to)
 
 Reach for `all_box` when you want simple key-value storage — settings,
 flags, small app state — with synchronous reads after boot and optimistic
-writes with an explicit opt-in to durable confirmation, and you're fine
-wiring up your own UI updates (no built-in reactivity).
+writes with an explicit opt-in to durable confirmation. Bring your own
+reactivity (see [above](#-need-reactivity)) if you need it.
 
 Reach for something else when you specifically need what it specializes
 in: custom type adapters for complex objects (Hive), a full embedded
 database with queries/indexes/relations (Isar), the Flutter ecosystem's
 most "standard" platform wrapper (SharedPreferences), or a storage library
-with built-in reactivity out of the box.
+with built-in reactivity.
 
 ## 🧪 Testing
 
@@ -458,15 +361,8 @@ with built-in reactivity out of the box.
 flutter test
 ```
 
-The tests specifically cover the bug scenarios mapped above: a file
-corrupted with random binary bytes, invalid JSON, fallback to `.bak`,
-multiple `write()` calls coalescing into a single flush, and isolation
-between containers.
-
-### Testing code that consumes `all_box`
-
-If you're testing your own app/package (not `all_box` itself), you don't
-need a real directory on disk (or a browser) — use in-memory storage:
+If you're testing your own app/package (not `all_box` itself), use
+in-memory storage instead of a real directory or browser:
 
 ```dart
 final box = await AllBox.memory(
@@ -475,11 +371,9 @@ final box = await AllBox.memory(
 );
 ```
 
-This does no real I/O and schedules no real `Timer` (every `write()`
-"flushes" synchronously) — this matters especially inside `testWidgets`:
-your `FakeAsync` zone expects every `Timer` to resolve before the test
-ends, and a real disk/Web-backed container would leave a debounce `Timer`
-pending there.
+This does no real I/O and schedules no real `Timer`, which matters
+specifically inside `testWidgets` (its `FakeAsync` zone expects every
+`Timer` to resolve before the test ends).
 
 (The older `AllBox.initWithMemoryBackendForTesting()` still works — it's
 now a thin, `@Deprecated` wrapper around `AllBox.memory()`.)
@@ -487,12 +381,12 @@ now a thin, `@Deprecated` wrapper around `AllBox.memory()`.)
 ## 📚 Documentation
 
 - [Comparison](documentation/en/comparison.md) — detailed comparison vs. GetStorage, Hive, Isar, SharedPreferences, including a performance benchmark.
-- [Internal architecture](documentation/en/architecture.md) — write-ahead + atomic rename pipeline, flush coordination, and the `dart:js_interop` Web backend.
+- [Internal architecture](documentation/en/architecture.md) — write-ahead + atomic rename pipeline, flush coordination, the `dart:js_interop` Web backend, and known limitations.
 
 ## 📦 Other packages by us
 
-`all_box` is part of a small family of zero/low-dependency Dart & Flutter
-packages published under the
+`all_box` is part of a small family of Dart & Flutter packages published
+under the
 [`opensource.tatamemaster.com.br`](https://pub.dev/publishers/opensource.tatamemaster.com.br/packages)
 verified publisher:
 
@@ -515,3 +409,4 @@ started.
 
 Issues and pull requests are welcome at the
 [GitHub repository](https://github.com/CriandoGames/all_box). Distributed under the [MIT](LICENSE) license.
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 

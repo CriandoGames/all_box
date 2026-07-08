@@ -1,4 +1,4 @@
-## Unreleased
+## 0.4.0
 
 Web support, plus a breaking change: the reactive layer is gone.
 
