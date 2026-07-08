@@ -17,5 +17,6 @@
 /// (junto com `all_validations_br` e `all_compress`).
 library;
 
-export 'src/core/all_box_impl.dart' show AllBox;
+export 'src/core/all_box_impl.dart'
+    show AllBox, AllBoxStorage, AllBoxPersistMode, AllBoxStorageException;
 export 'src/core/all_box_value.dart' show AllBoxValue, AllBoxValueExtension;

@@ -13,7 +13,9 @@ topics:
   - cache
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
+  # >=3.3.0 because the Web storage backend uses `dart:js_interop` extension
+  # types (stabilized in Dart 3.3), which don't compile on earlier SDKs.
+  sdk: ">=3.3.0 <4.0.0"
   flutter: ">=3.10.0"
 
 # TODO: the core (package:all_box/all_box.dart) is already pure Dart, but

@@ -40,7 +40,8 @@
 - 🛡️ **Crash-safety de verdade.** Toda escrita passa por um arquivo `.tmp` e só então um rename atômico substitui o arquivo principal (`.db`); um `.bak` do último estado bom é mantido à parte, com fallback automático em dois estágios (erro de decodificação UTF-8 e erro de `jsonDecode`).
 - 📍 **`path` explícito, nunca resolvido internamente.** `AllBox` nunca importa `path_provider` nem resolve diretório algum — quem chama `init()` decide onde o container vive. Isso evita, por construção, os bugs de resolução de plugin/Activity que afetam bibliotecas que resolvem o path por padrão.
 - ⚡ **Escrita otimista + debounced**, com `writeAndFlush()`/`flushNow()` para os momentos em que você precisa de uma confirmação real e imediata em disco.
-- 🧪 **Backend em memória para testes.** `AllBox.initWithMemoryBackendForTesting()` roda sem I/O real e sem `Timer` real, seguro para `testWidgets`.
+- 🧪 **Storage em memória para testes.** `AllBox.memory()` roda sem I/O real e sem `Timer` real, seguro para `testWidgets`.
+- 🌐 **Suporte a Web.** `AllBox.init('settings')` (sem `path`) usa automaticamente o `window.localStorage` na Web, via `dart:js_interop` — nunca `dart:html` (que impede a compilação para `dart2wasm`).
 
 
 
@@ -60,10 +61,21 @@ Código só-Dart (sem widgets Flutter) precisa apenas do core:
 ```dart
 import 'package:all_box/all_box.dart';
 
-await AllBox.init('settings', path: dir.path);
-final box = AllBox('settings');
+// Web: sem `path` — o AllBox usa window.localStorage automaticamente.
+final box = await AllBox.init('settings');
+
+// IO (VM/AOT nativa, incl. Flutter mobile/desktop): informe um diretório.
+final box = await AllBox.init('settings', path: dir.path);
+
 box.write('name', 'Carlos');
 final name = box.read<String>('name');
+```
+
+Testando seu próprio app/pacote contra uma instância real de `AllBox`, sem
+I/O real nenhum:
+
+```dart
+final box = await AllBox.memory('settings', initialData: {'darkMode': true});
 ```
 
 Apps Flutter que também querem a camada reativa (`AllBoxListenable`,
@@ -107,13 +119,21 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // AllBox nunca resolve o próprio diretório — quem resolve é você, depois
-  // que o binding estiver pronto. Qualquer estratégia de path funciona.
+  // que o binding estiver pronto. Qualquer estratégia de path funciona. Não
+  // é necessário na Web: `path` é ignorado lá, já que o AllBox usa
+  // automaticamente o `window.localStorage`.
   final dir = await getApplicationDocumentsDirectory();
   await AllBox.init('my_container', path: dir.path);
 
   runApp(const MyApp());
 }
 ```
+
+Qual storage é usado é resolvido automaticamente a partir do alvo de
+compilação: a Web sempre usa `window.localStorage`; qualquer outro alvo
+(IO) usa o `path` que você fornecer. Também existe um argumento avançado
+`storage:` para conectar sua própria implementação de `AllBoxStorage`, mas
+o código do dia a dia nunca precisa dele.
 
 ### Seed de dados no primeiro run (`initialData`)
 
@@ -277,7 +297,8 @@ Tudo abaixo, exceto `AllBoxListenable`/`AllBoxBuilder`, é core
 | Member | Descrição |
 | --- | --- |
 | `AllBox([container])` | Factory constructor; retorna um singleton por nome de container. |
-| `static AllBox.init(container, {required path, flushDelay, initialData})` | Carrega o `container` do disco para a memória. `path` é obrigatório — veja abaixo. `initialData` semeia valores default, mas só num first-run de verdade. |
+| `static AllBox.init(container, {path, flushDelay, initialData, storage})` | Carrega o `container` para a memória e retorna o `AllBox` inicializado. `path` é obrigatório em plataformas IO, ignorado na Web. `initialData` semeia valores default, mas só num first-run de verdade. `storage` é um override avançado — veja abaixo. |
+| `static AllBox.memory(container, {initialData})` | Forma recomendada de testar código que consome o `all_box`: sem I/O real, sem `Timer` real. Substitui o descontinuado `initWithMemoryBackendForTesting`. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Leituras síncronas. |
 | `void write(key, value)` | Escrita otimista + debounced. Em debug, avisa (via `debugPrint` em vermelho) se `value` não for JSON-encodável, mas nunca lança exceção. |
 | `Future<void> writeAndFlush(key, value)` | Escreve e espera a confirmação em disco. Mesmo aviso de serialização de `write()`. |
@@ -290,17 +311,24 @@ Tudo abaixo, exceto `AllBoxListenable`/`AllBoxBuilder`, é core
 | `AllBoxBuilder<T>` | Widget que reconstrói quando `keyName` muda. |
 | `'key'.val<T>(default)` | Handle opcional de mini state-manager sem DI. |
 
-### Por que `path` é um parâmetro obrigatório de `init()`?
+### Por que `path` é obrigatório no IO, mas não na Web?
 
 `AllBox` **nunca** importa `path_provider` (nem resolve diretório algum)
-internamente. Quem chama sempre decide onde o container vive. É uma escolha
-de design deliberada, não um descuido — veja a seção abaixo.
+internamente. Em plataformas IO, quem chama sempre decide onde o container
+vive — é uma escolha de design deliberada, não um descuido (veja a seção
+abaixo). Na Web não há nada para resolver: o `window.localStorage` está
+sempre num local fixo e conhecido, então `path` simplesmente não se aplica
+ali e é silenciosamente ignorado se você passar um mesmo assim (útil para
+código compartilhado entre IO e Web).
 
 ## 🛠️ Decisões de Design
 
-- **`path` explícito e obrigatório em `init()`.** O `all_box` nunca resolve
-  diretório algum internamente — quem chama `init()` sempre informa o
-  `path`, evitando qualquer resolução de plugin dentro da lib.
+- **`path` explícito no IO, storage automático na Web.** O `all_box` nunca
+  resolve diretório algum internamente no IO — quem chama `init()` sempre
+  informa o `path` ali, evitando qualquer resolução de plugin dentro da
+  lib. Na Web, o storage é resolvido automaticamente para
+  `window.localStorage`, já que não há um "path" significativo para pedir
+  a quem chama.
 - **`initialData` só se aplica em first-run de verdade.** A checagem é feita
   pela existência de `<container>.db`/`<container>.bak` em disco, não pelo
   conteúdo em memória — um container esvaziado por `erase()` ainda tem um
@@ -323,6 +351,11 @@ de design deliberada, não um descuido — veja a seção abaixo.
   (`cd example && flutter run --profile`, depois toque no ícone ⚡) ou rode
   o micro-benchmark do pacote com
   `flutter test benchmark/benchmark_test.dart`.
+- **Um único coordenador de flush genérico, compartilhado por todo
+  storage.** A lógica de debounce/coalescing/fila de flush serializada vive
+  uma única vez, dentro do próprio `AllBox`, e funciona contra qualquer
+  `AllBoxStorage` (disco, Web, memória, ou o seu próprio) — não é duplicada
+  por backend.
 - **Aviso de serialização em debug, não exceção.** `write()`/`writeAndFlush()`
   chamam `jsonEncode` no valor na hora, só em debug, e emitem um
   `debugPrint` em vermelho se ele não for serializável — mas nunca lançam
@@ -330,13 +363,25 @@ de design deliberada, não um descuido — veja a seção abaixo.
   `GetStorage`). O valor segue gravado em memória normalmente; se
   realmente não puder ser codificado, a falha só volta a aparecer, calada,
   lá dentro do flush.
-- **Sem suporte a Web nesta v1** (ver limitações abaixo).
+- **Suporte a Web via `dart:js_interop`, nunca `dart:html`.** O `dart:html`
+  impede a compilação para `dart2wasm`, então o backend de storage Web é
+  construído sobre static interop puro do `dart:js_interop` (veja as
+  limitações abaixo para o que esse backend pode e não pode fazer).
 
 ## ⚠️ Limitações conhecidas (documentadas, não escondidas)
 
-- **Sem suporte a Web nesta v1.** Se um dia for adicionado, deve usar
-  `package:web` via conditional imports — **nunca** `dart:html`, já que
-  `dart:html` impede a compilação para WASM (`dart2wasm`).
+- **O storage Web (`localStorage`) tem limites reais.** Não há um
+  equivalente a `fsync` — `save` e `flush` se comportam de forma idêntica
+  na Web, já que uma chamada `localStorage.setItem` já é síncrona. O
+  storage é isolado por *origem* do navegador (esquema + host + porta), então
+  `http://localhost:3000` e `http://localhost:4000` enxergam storages
+  completamente diferentes durante o desenvolvimento local. Os limites de
+  tamanho variam por navegador (geralmente alguns MB por origem) e não são
+  impostos nem informados antecipadamente pelo `AllBox` — uma escrita além
+  do limite lança uma `AllBoxStorageException`. Os dados não são
+  criptografados: não guarde segredos ou dados sensíveis num container Web
+  sem criptografá-los você mesmo antes. Não recomendado para grandes
+  volumes de dados.
 - **Não é isolate-safe.** Cada `AllBox` mantém seu estado em memória no
   isolate onde foi inicializado; não há sincronização entre isolates. Se
   você usa múltiplos isolates (ex.: `compute()`, isolates de background),
@@ -355,7 +400,7 @@ de design deliberada, não um descuido — veja a seção abaixo.
 | Leitura | Síncrona, em memória | Síncrona, em memória | Síncrona (box aberta) | Síncrona (simples) / assíncrona (queries) | Assíncrona |
 | `path` do storage | Explícito, obrigatório | Resolvido internamente | Resolvido pelo chamador | Resolvido pelo chamador | Resolvido pela plataforma |
 | Crash-safety documentada | Write-ahead + rename atômico + `.bak` | Não documentada no mesmo nível | WAL/compaction interno | WAL via engine própria | Depende da plataforma |
-| Suporte a Web | Não (v1) | Sim | Sim | Sim | Sim |
+| Suporte a Web | Sim (`localStorage`) | Sim | Sim | Sim | Sim |
 | Escopo | Só key-value + reatividade | Storage + utils de UI (GetX) | Storage orientado a boxes | Banco de dados completo | Wrapper de plataforma |
 
 ![Comparativo de desempenho: all_box vs. Hive e SharedPreferences, medido no dispositivo em modo profile](doc/comparison_benchmark_pt-BR.png)
@@ -397,20 +442,24 @@ containers, notificação correta de listeners em `erase()`, e
 ### Testando código que consome o `all_box`
 
 Se você está testando seu próprio app/pacote (não o `all_box` em si), não
-precisa de um diretório real em disco — use o backend em memória:
+precisa de um diretório real em disco (nem de navegador) — use storage em
+memória:
 
 ```dart
-await AllBox.initWithMemoryBackendForTesting(
+final box = await AllBox.memory(
   'my_container',
-  initialValues: {'darkMode': true},
+  initialData: {'darkMode': true},
 );
 ```
 
 Isso não faz I/O real e não agenda nenhum `Timer` real (todo `write()`
 "flusha" de forma síncrona) — é especialmente importante dentro de
 `testWidgets`: sua zona `FakeAsync` espera que todo `Timer` seja resolvido
-antes do teste terminar, e um container disk-backed real deixaria um
+antes do teste terminar, e um container disk/Web-backed real deixaria um
 `Timer` de debounce pendente ali.
+
+(O antigo `AllBox.initWithMemoryBackendForTesting()` ainda funciona — agora
+é só um wrapper fino e `@Deprecated` em volta do `AllBox.memory()`.)
 
 ## 📚 Documentação
 
