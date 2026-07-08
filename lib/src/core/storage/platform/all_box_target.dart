@@ -18,6 +18,8 @@
 /// deliberadamente não o `Platform` do `dart:io` (indisponível na Web) nem
 /// o `kIsWeb` do Flutter (este é o core em Dart puro; não pode depender do
 /// Flutter).
+library;
+
 export 'all_box_target_stub.dart'
     if (dart.library.io) 'all_box_target_io.dart'
     if (dart.library.js_interop) 'all_box_target_web.dart';

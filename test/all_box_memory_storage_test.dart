@@ -9,6 +9,10 @@
 // test/all_box_core_test.dart, mas especificamente contra o storage em
 // memória.
 
+// The 'deprecated initWithMemoryBackendForTesting alias' group below
+// intentionally exercises the deprecated alias to confirm it still works.
+// ignore_for_file: deprecated_member_use_from_same_package
+
 import 'package:test/test.dart';
 
 import 'package:all_box/all_box.dart';
@@ -182,7 +186,6 @@ void main() {
       const container = 'memory_deprecated_alias_test';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
 
-      // ignore: deprecated_member_use
       await AllBox.initWithMemoryBackendForTesting(
         container,
         initialValues: {'seeded': 'value'},

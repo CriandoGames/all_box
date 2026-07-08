@@ -5,6 +5,11 @@
 // puro, sem nenhuma reatividade envolvida (o all_box não tem mais nenhuma
 // API de listener/reatividade).
 
+// The 'initWithMemoryBackendForTesting' group below intentionally exercises
+// the deprecated alias to confirm it still works as a thin wrapper around
+// AllBox.memory().
+// ignore_for_file: deprecated_member_use_from_same_package
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';

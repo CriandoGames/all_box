@@ -244,7 +244,7 @@ class AllBox {
   /// pending there can hang the test runner instead of failing it.
   ///
   /// This is the recommended replacement for the older
-  /// [initWithMemoryBackendForTesting].
+  /// `initWithMemoryBackendForTesting`.
   ///
   /// **PT-BR:** Inicializa [container] com um storage puramente em memória:
   /// sem I/O real em disco, sem storage de navegador, sem [Timer] real. Todo
@@ -266,7 +266,7 @@ class AllBox {
   /// o teste.
   ///
   /// É a substituta recomendada do antigo
-  /// [initWithMemoryBackendForTesting].
+  /// `initWithMemoryBackendForTesting`.
   static Future<AllBox> memory(
     String container, {
     Map<String, dynamic> initialData = const <String, dynamic>{},
