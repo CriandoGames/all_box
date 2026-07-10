@@ -41,6 +41,47 @@ part of '../core/all_box_impl.dart';
 class AllBoxInspector {
   const AllBoxInspector._();
 
+  /// VM Service extension event kind posted (debug/profile-only) by
+  /// `AllBox.write`/`writeAndFlush`/`writeAndSave`/`remove`/`erase` right
+  /// after they mutate memory — see `AllBox._debugPostMutationEvent`.
+  ///
+  /// External tooling (e.g. a DevTools extension) can listen for this via
+  /// the VM Service protocol (`streamListen('Extension')`, then filter
+  /// `Event.extensionKind == AllBoxInspector.mutationEventKind`) to react
+  /// to writes in near real time instead of polling [snapshot]/
+  /// [snapshotAsJson] on a timer. The event's `extensionData` is a
+  /// `{'container': String, 'op': 'write'|'remove'|'erase', 'key':
+  /// String?}` map — deliberately minimal (no value, no full snapshot):
+  /// listeners are expected to re-fetch via [snapshotOfAsJson] (or
+  /// [snapshotAsJson]) rather than trust the event payload as a full
+  /// state update.
+  ///
+  /// This is **not** a Dart-level listener/reactive API — see
+  /// `AllBox._debugPostMutationEvent`'s doc comment for why that
+  /// distinction holds even though this constant exists.
+  ///
+  /// **PT-BR:** Tipo de evento de extensão da VM Service postado (somente
+  /// debug/profile) por `AllBox.write`/`writeAndFlush`/`writeAndSave`/
+  /// `remove`/`erase` logo depois de mutarem a memória — veja
+  /// `AllBox._debugPostMutationEvent`.
+  ///
+  /// Ferramentas externas (ex.: uma extensão do DevTools) podem escutar
+  /// isso via protocolo da VM Service (`streamListen('Extension')`,
+  /// depois filtrando `Event.extensionKind ==
+  /// AllBoxInspector.mutationEventKind`) para reagir a escritas quase em
+  /// tempo real, em vez de fazer polling de [snapshot]/[snapshotAsJson]
+  /// num timer. O `extensionData` do evento é um map `{'container':
+  /// String, 'op': 'write'|'remove'|'erase', 'key': String?}` —
+  /// deliberadamente mínimo (sem valor, sem retrato completo): quem
+  /// escuta deve rebuscar via [snapshotOfAsJson] (ou [snapshotAsJson]) em
+  /// vez de confiar no payload do evento como atualização completa de
+  /// estado.
+  ///
+  /// Isto **não** é uma API de listener/reatividade em nível Dart — veja
+  /// o comentário de `AllBox._debugPostMutationEvent` sobre por que essa
+  /// distinção continua valendo mesmo com esta constante existindo.
+  static const String mutationEventKind = 'all_box:mutation';
+
   /// A read-only snapshot of every container that currently has a live
   /// [AllBox] instance in this isolate — i.e. every container that has been
   /// constructed via `AllBox(name)`, `AllBox.init(...)` or

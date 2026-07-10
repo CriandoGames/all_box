@@ -1,3 +1,30 @@
+## 0.6.0
+
+Adds debug-only push notifications for external tooling, as a follow-up
+to `AllBoxInspector` (`0.5.0`) — closes the "Fase 2" item from
+`all_box_devtool`'s roadmap.
+
+- **New:** `write()`, `writeAndFlush()`, `writeAndSave()`, `remove()`
+  (when a key actually existed) and `erase()` now also post a VM Service
+  extension event (`AllBoxInspector.mutationEventKind`,
+  `'all_box:mutation'`) right after mutating memory, in debug/profile
+  builds only. Payload is intentionally minimal — `{container, op, key?}`
+  — no value and no full snapshot; listeners are expected to re-fetch via
+  `AllBoxInspector.snapshotOfAsJson`/`snapshotAsJson`.
+- **Not a Dart API change.** There is still no callback list, `Stream`,
+  or anything Dart code (including this package's own) can subscribe to.
+  `developer.postEvent` only ever reaches tooling attached over the VM
+  Service protocol and is a no-op with nothing attached — the `0.4.0`
+  promise ("write()/remove()/erase() never notify anything") was always
+  about Dart-visible notification, which this does not add. See
+  `AllBox._debugPostMutationEvent`'s doc comment for the full reasoning.
+- No-op in release builds, same `allBoxDebugMode` guard as everything
+  else in this family of changes.
+- Enables a DevTools extension (or any other VM-Service-attached tool)
+  to react to writes in near real time instead of polling
+  `AllBoxInspector.snapshot()` on a timer — polling remains a fine and
+  fully supported fallback; this is additive, not a replacement.
+
 ## 0.5.0
 
 Adds `AllBoxInspector`: a read-only, debug/profile-only introspection

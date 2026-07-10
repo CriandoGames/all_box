@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'storage/all_box_memory_storage.dart';
 import 'storage/all_box_platform_storage.dart';
@@ -341,6 +342,7 @@ class AllBox {
     _warnIfNotSerializable('write', key, value);
     _box[key] = value;
     _flush!.scheduleFlush(_box);
+    _debugPostMutationEvent('write', key: key);
   }
 
   /// Like [write], but returns a [Future] that only completes once the new
@@ -353,6 +355,7 @@ class AllBox {
     _assertInitialized('writeAndFlush');
     _warnIfNotSerializable('writeAndFlush', key, value);
     _box[key] = value;
+    _debugPostMutationEvent('write', key: key);
     await _flush!.flushNow(_box);
   }
 
@@ -400,6 +403,7 @@ class AllBox {
     _assertInitialized('writeAndSave');
     _warnIfNotSerializable('writeAndSave', key, value);
     _box[key] = value;
+    _debugPostMutationEvent('write', key: key);
     await _flush!.flushNow(_box, fsync: false);
   }
 
@@ -411,6 +415,7 @@ class AllBox {
     if (!_box.containsKey(key)) return;
     _box.remove(key);
     _flush!.scheduleFlush(_box);
+    _debugPostMutationEvent('remove', key: key);
   }
 
   /// Clears every key in this container.
@@ -420,6 +425,7 @@ class AllBox {
     _assertInitialized('erase');
     _box.clear();
     _flush!.scheduleFlush(_box);
+    _debugPostMutationEvent('erase');
   }
 
   /// Forces an immediate flush, ignoring the debounce window.
@@ -489,6 +495,53 @@ class AllBox {
         'with a toJson() that returns one of those).\x1B[0m',
       );
     }
+  }
+
+  /// Posts a debug-only VM Service extension event so external tooling
+  /// (e.g. a DevTools extension) can react to a mutation without polling
+  /// [AllBoxInspector.snapshot]/[AllBoxInspector.snapshotAsJson].
+  ///
+  /// This is **not** a Dart-level listener/reactive API: there is no
+  /// callback list, no `Stream`, nothing any Dart code — including this
+  /// package's own — can subscribe to. `developer.postEvent` only ever
+  /// reaches tooling attached over the VM Service protocol (e.g. DevTools
+  /// or a debugger), and only does anything when something is actually
+  /// listening on the `Extension` stream; from `write()`/`remove()`/
+  /// `erase()`'s point of view it's exactly as inert as a `print()`
+  /// nobody reads. `all_box`'s public promise from `0.4.0` — "write(),
+  /// remove() and erase() only update memory and schedule persistence;
+  /// they never notify anything" — is about *Dart-visible* notification,
+  /// which this does not add.
+  ///
+  /// Guarded by [allBoxDebugMode], same as [allBoxDebugLog] and
+  /// [_warnIfNotSerializable]: a no-op in release builds.
+  ///
+  /// **PT-BR:** Posta um evento de extensão da VM Service, somente em
+  /// debug, para que ferramentas externas (ex.: uma extensão do DevTools)
+  /// possam reagir a uma mutação sem fazer polling de
+  /// [AllBoxInspector.snapshot]/[AllBoxInspector.snapshotAsJson].
+  ///
+  /// Isto **não** é uma API de listener/reatividade em nível Dart: não há
+  /// lista de callbacks, nem `Stream`, nada que código Dart — nem deste
+  /// próprio pacote — possa assinar. `developer.postEvent` só chega a
+  /// ferramentas conectadas via protocolo da VM Service (ex.: DevTools ou
+  /// um debugger), e só faz algo quando alguém de fato está ouvindo o
+  /// stream `Extension`; do ponto de vista de `write()`/`remove()`/
+  /// `erase()`, é tão inerte quanto um `print()` que ninguém lê. A
+  /// promessa pública do `all_box` desde a `0.4.0` — "write(), remove() e
+  /// erase() só atualizam a memória e agendam persistência; nunca
+  /// notificam nada" — é sobre notificação *visível para código Dart*,
+  /// que isto não adiciona.
+  ///
+  /// Guardado por [allBoxDebugMode], igual a [allBoxDebugLog] e
+  /// [_warnIfNotSerializable]: um no-op em builds de release.
+  void _debugPostMutationEvent(String op, {String? key}) {
+    if (!allBoxDebugMode) return;
+    developer.postEvent(AllBoxInspector.mutationEventKind, <String, dynamic>{
+      'container': container,
+      'op': op,
+      if (key != null) 'key': key,
+    });
   }
 
   /// Removes this container's cached singleton instance and cancels any

@@ -165,4 +165,45 @@ void main() {
       expect(entries['when'], startsWith('<non-JSON-encodable:'));
     });
   });
+
+  group('mutation events (dart:developer postEvent)', () {
+    // `developer.postEvent` only does something when a VM Service client
+    // is actually attached and listening on the `Extension` stream, which
+    // a plain `dart test` run isn't. These tests can't assert an event
+    // was *received* — that's covered manually/via the DevTools extension
+    // (see all_box_devtool's ARCHITECTURE.md verification checklist).
+    // What they do assert: the event kind constant is stable, and that
+    // every mutating method still behaves exactly as before now that it
+    // also posts an event — i.e. this feature never throws, blocks, or
+    // changes write()/remove()/erase()'s existing behavior.
+    test('mutationEventKind is the documented, stable string', () {
+      expect(AllBoxInspector.mutationEventKind, 'all_box:mutation');
+    });
+
+    test('write/writeAndFlush/writeAndSave/remove/erase still behave '
+        'normally with the mutation-event hook in place', () async {
+      const container = 'inspector_mutation_events';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      final box = await AllBox.memory(container);
+
+      box.write('a', 1);
+      expect(box.read<int>('a'), 1);
+
+      await box.writeAndFlush('b', 2);
+      expect(box.read<int>('b'), 2);
+
+      await box.writeAndSave('c', 3);
+      expect(box.read<int>('c'), 3);
+
+      box.remove('a');
+      expect(box.hasData('a'), isFalse);
+
+      // remove() on an absent key must not post an event or throw.
+      box.remove('does_not_exist');
+
+      box.erase();
+      expect(box.getKeys(), isEmpty);
+    });
+  });
 }
