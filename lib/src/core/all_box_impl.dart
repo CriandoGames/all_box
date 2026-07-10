@@ -8,6 +8,12 @@ import 'storage/all_box_storage.dart';
 export 'storage/all_box_storage.dart' show AllBoxStorage, AllBoxPersistMode;
 export 'storage/all_box_storage_exception.dart' show AllBoxStorageException;
 
+// Split out of this file via `part`/`part of` (not separate libraries) so
+// that AllBoxInspector can read AllBox's private `_instances`/`_box`/`_flush`
+// without a public listener/reactive API — see debug/all_box_inspector.dart.
+part '../debug/all_box_container_snapshot.dart';
+part '../debug/all_box_inspector.dart';
+
 /// Whether the current build is a debug build.
 ///
 /// Pure Dart equivalent of Flutter's `kDebugMode`, computed via [assert]

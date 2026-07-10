@@ -1,3 +1,38 @@
+## 0.5.0
+
+Adds `AllBoxInspector`: a read-only, debug/profile-only introspection
+surface, built to support external tooling (e.g. a DevTools extension)
+without reintroducing the listener/reactive API removed in `0.4.0`.
+
+- **New:** `AllBoxInspector.snapshot()` / `AllBoxInspector.snapshotOf(container)`
+  return `AllBoxContainerSnapshot`s: container name, `isInitialized`,
+  storage `backend` (`AllBoxBackendKind`: `io` / `web` / `memory` /
+  `unsupported` / `custom`), `pendingFlush` (whether a debounced write is
+  still waiting), a read-only copy of `entries`, and an
+  `approximateSizeBytes` estimate.
+- **New:** `AllBoxContainerSnapshot.toJson()`, and its JSON-string
+  counterparts `AllBoxInspector.snapshotAsJson()` /
+  `snapshotOfAsJson(container)`, meant for callers on the far side of a VM
+  Service `eval` boundary (e.g. a DevTools extension using
+  `EvalOnDartLibrary`) — evaluating a single expression that returns a
+  `String` is far simpler than walking a `List<AllBoxContainerSnapshot>`
+  field-by-field over the VM Service protocol. Non-JSON-encodable values
+  inside `entries` are replaced with a `'<non-JSON-encodable: Type>'`
+  placeholder instead of making the whole snapshot fail to serialize.
+- No-op (returns an empty list / `null` / `'[]'` / `'null'`) in release
+  builds, mirroring the existing `allBoxDebugMode` guard used by
+  `allBoxDebugLog`.
+- Purely additive: `AllBox`'s existing public surface
+  (`read`/`getKeys`/`getValues`/`hasData`/`write`/...) is unchanged. What
+  was missing before this release was *discovery* — knowing which
+  containers exist at all in the current isolate — and backend/flush
+  metadata that no existing getter exposed; per-container reads already
+  covered "I know the name and want its data" and remain regular
+  (non-debug-only) public API.
+- Does not notify anything and does not add a `storage:` interface
+  member, so it cannot break existing custom `AllBoxStorage`
+  implementations.
+
 ## 0.4.0
 
 Web support, plus a breaking change: the reactive layer is gone.

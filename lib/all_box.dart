@@ -16,4 +16,11 @@
 library;
 
 export 'src/core/all_box_impl.dart'
-    show AllBox, AllBoxStorage, AllBoxPersistMode, AllBoxStorageException;
+    show
+        AllBox,
+        AllBoxStorage,
+        AllBoxPersistMode,
+        AllBoxStorageException,
+        AllBoxInspector,
+        AllBoxContainerSnapshot,
+        AllBoxBackendKind;
