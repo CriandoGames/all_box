@@ -21,12 +21,11 @@ abstract interface class AllBoxIndexedDbDriver {
   Future<void> close();
 }
 
-/// Internal, not-yet-default IndexedDB-backed storage.
+/// Internal, not-default IndexedDB-backed storage.
 ///
-/// Stage 1 keeps this storage inactive: `AllBox.init()` still resolves to the
-/// existing `window.localStorage` backend on Web. This class exists so the
-/// IndexedDB persistence contract can be tested before it becomes a default
-/// backend.
+/// `AllBox.init()` still resolves to `window.localStorage` by default on
+/// Web. This class keeps the IndexedDB persistence contract isolated while
+/// the beta migration path is validated before any default-backend switch.
 class AllBoxIndexedDbStorage implements AllBoxStorage {
   AllBoxIndexedDbStorage({
     required this.container,

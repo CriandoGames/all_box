@@ -15,6 +15,7 @@ AllBoxStorage createPlatformStorage({
   required String container,
   String? path,
   bool validateContainerName = false,
+  bool experimentalIndexedDbBackend = false,
 }) {
   if (path == null) {
     throw AllBoxStorageException(

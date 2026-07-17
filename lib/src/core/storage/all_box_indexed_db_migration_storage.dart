@@ -5,11 +5,11 @@ import 'all_box_storage.dart';
 import 'all_box_storage_exception.dart';
 import 'all_box_web_storage.dart';
 
-/// Internal migration wrapper for the future IndexedDB Web backend.
+/// Internal migration wrapper for the beta IndexedDB Web backend.
 ///
-/// This is intentionally not wired into `AllBox.init()` yet. It exists to
-/// prove the localStorage -> IndexedDB compatibility path before changing
-/// the default Web backend.
+/// This is selected only when `AllBox.init()` receives
+/// `experimentalIndexedDbBackend: true`. It proves the localStorage ->
+/// IndexedDB compatibility path before changing the default Web backend.
 class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
   AllBoxIndexedDbMigrationStorage({
     required this.container,

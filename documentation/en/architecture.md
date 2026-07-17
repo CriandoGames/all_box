@@ -92,9 +92,9 @@ after the app's first launch.
 Initialization is serialized per container. Concurrent calls with
 equivalent options share the same in-flight initialization `Future`.
 Concurrent calls with conflicting `path`, `storage`, `initialData`,
-`flushDelay`, `onPersistenceError`, or `validateContainerName` are rejected
-with a `StateError` instead of letting one configuration win
-non-deterministically.
+`flushDelay`, `onPersistenceError`, `validateContainerName`, or
+`experimentalIndexedDbBackend` are rejected with a `StateError` instead of
+letting one configuration win non-deterministically.
 
 When first-run seeding fails to persist, initialization is rolled back:
 the container is left uninitialized, in-memory data is cleared, and a later
@@ -185,19 +185,21 @@ from stale snapshots can still lose data. This is a documented architectural
 limitation until a revision/conflict protocol and a backend suitable for
 cross-context coordination are designed.
 
-An internal IndexedDB storage testbed exists behind
+An internal IndexedDB storage backend exists behind
 `AllBoxIndexedDbStorage` and `AllBoxBrowserIndexedDbDriver`, with VM/fake
-and real-Chrome regression tests. It is intentionally not wired into
-`AllBox.init()` yet: the default Web backend remains `window.localStorage`
-while the full migration/default-switch plan is validated. Inspector
-compatibility for the inactive backends is covered below; safe multi-tab
-behavior still needs a separate design.
+and real-Chrome regression tests. It is not the default Web backend:
+`AllBox.init()` still resolves to `window.localStorage` unless the caller
+explicitly opts into the beta migration backend with
+`experimentalIndexedDbBackend: true`. Inspector compatibility for the Web
+backend family is covered below; safe multi-tab behavior still needs a
+separate design.
 
-The localStorage -> IndexedDB migration path is also implemented as an
-inactive internal wrapper (`AllBoxIndexedDbMigrationStorage`). Its tests
-cover legacy localStorage reads, IndexedDB-first precedence, migration that
-removes the legacy copy only after a successful IndexedDB write, IndexedDB
-failure fallback to localStorage, and delete behavior across both stores.
+The localStorage -> IndexedDB migration path is implemented as
+`AllBoxIndexedDbMigrationStorage` and is selected only by the explicit beta
+opt-in. Its tests cover legacy localStorage reads, IndexedDB-first
+precedence, migration that removes the legacy copy only after a successful
+IndexedDB write, IndexedDB failure fallback to localStorage, and delete
+behavior across both stores.
 Inspector compatibility is covered separately: all Web-family backends still
 report `backend: web`, with `backendDetail` identifying the concrete backend.
 
@@ -207,6 +209,12 @@ store exists, so an incompatible database is reported with a clear schema
 diagnostic instead of failing later during a transaction. Browser regression
 tests also cover `versionchange` auto-close behavior and blocked deletion
 errors. This hardening still does not make IndexedDB the default Web backend.
+
+The beta opt-in is reversible by design: removing
+`experimentalIndexedDbBackend: true` sends `AllBox.init()` back to the
+localStorage backend and does not read existing IndexedDB data. Browser
+regression tests cover that rollback behavior and cover multi-container
+isolation through the migration wrapper.
 
 ## Benchmarks
 

@@ -1,9 +1,8 @@
 name: all_box
 description: >
   Synchronous, lightweight key-value storage with crash-safe writes
-  (write-ahead + atomic rename). Pure Dart, no Flutter dependency, no
-  reactive layer.
-version: 0.8.0
+  (write-ahead + atomic rename)
+version: 1.0.0-beta.1
 homepage: https://github.com/CriandoGames/all_box
 repository: https://github.com/CriandoGames/all_box
 issue_tracker: https://github.com/CriandoGames/all_box/issues
@@ -20,4 +19,4 @@ environment:
 
 dev_dependencies:
   test: ^1.25.0
-  lints: ^5.0.0
+  lints: ^3.0.0

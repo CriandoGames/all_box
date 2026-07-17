@@ -168,5 +168,33 @@ void main() {
       firstStorage.loadCompleter.complete(<String, dynamic>{'loaded': true});
       await first;
     });
+
+    test('rejects concurrent initialization with different IndexedDB opt-in',
+        () async {
+      const container = 'init_concurrent_indexed_db_option_conflict';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+      final storage = _ControlledLoadStorage();
+
+      final first = AllBox.init(container, storage: storage);
+      await Future<void>.delayed(Duration.zero);
+
+      await expectLater(
+        AllBox.init(
+          container,
+          storage: storage,
+          experimentalIndexedDbBackend: true,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('experimentalIndexedDbBackend'),
+          ),
+        ),
+      );
+
+      storage.loadCompleter.complete(<String, dynamic>{'loaded': true});
+      await first;
+    });
   });
 }

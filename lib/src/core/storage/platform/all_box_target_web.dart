@@ -1,11 +1,14 @@
 import 'dart:js_interop';
 
+import '../all_box_indexed_db_migration_storage.dart';
 import '../all_box_storage.dart';
 import '../all_box_web_storage.dart';
+import 'all_box_indexed_db_browser.dart';
 
 /// Web target: selected via the `dart.library.js_interop` conditional
-/// import condition. Backs `AllBox` with `window.localStorage`, accessed
-/// through pure `dart:js_interop` static interop — deliberately **not**
+/// import condition. Backs `AllBox` with `window.localStorage` by default,
+/// accessed through pure `dart:js_interop` static interop — deliberately
+/// **not**
 /// `dart:html` (which blocks `dart2wasm` compilation) and **not**
 /// `package:web` (an extra dependency this package doesn't need: the two
 /// or three `Storage` methods used here are trivial to declare directly).
@@ -15,9 +18,9 @@ import '../all_box_web_storage.dart';
 /// have to special-case Web just because it always passes `path`.
 ///
 /// **PT-BR:** Alvo Web: selecionado via a condição de import condicional
-/// `dart.library.js_interop`. Sustenta o `AllBox` com `window.localStorage`,
-/// acessado através de static interop puro do `dart:js_interop` —
-/// deliberadamente **sem** `dart:html` (que bloqueia a compilação para
+/// `dart.library.js_interop`. Sustenta o `AllBox` com `window.localStorage`
+/// por padrão, acessado através de static interop puro do `dart:js_interop`
+/// — deliberadamente **sem** `dart:html` (que bloqueia a compilação para
 /// `dart2wasm`) e **sem** `package:web` (uma dependência extra que este
 /// pacote não precisa: os dois ou três métodos de `Storage` usados aqui são
 /// triviais de declarar diretamente).
@@ -63,9 +66,22 @@ AllBoxStorage createPlatformStorage({
   required String container,
   String? path,
   bool validateContainerName = false,
+  bool experimentalIndexedDbBackend = false,
 }) {
+  const localStorage = _LocalStorageBrowserStorage();
+
+  // Explicit beta opt-in only. The default Web backend remains localStorage
+  // until the IndexedDB migration/default-switch plan is promoted.
+  if (experimentalIndexedDbBackend) {
+    return AllBoxIndexedDbMigrationStorage(
+      container: container,
+      indexedDb: AllBoxBrowserIndexedDbDriver(),
+      legacyStorage: localStorage,
+    );
+  }
+
   return AllBoxWebStorage(
     container: container,
-    browserStorage: const _LocalStorageBrowserStorage(),
+    browserStorage: localStorage,
   );
 }

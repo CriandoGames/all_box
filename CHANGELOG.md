@@ -1,3 +1,25 @@
+## 1.0.0-beta.1
+
+Pre-release for validating the Web IndexedDB backend without changing the
+stable default.
+
+- **New beta Web opt-in:** `AllBox.init(...,
+  experimentalIndexedDbBackend: true)` routes Web containers through the
+  localStorage -> IndexedDB migration backend. The default remains
+  `window.localStorage`.
+- **No hidden browser flag:** the previous internal activation path was
+  replaced by an explicit init option, so apps can choose the backend in
+  code and tests can assert the behavior directly.
+- **Migration behavior remains conservative:** legacy localStorage data is
+  copied to IndexedDB first, and the legacy copy is removed only after the
+  IndexedDB write succeeds.
+- **Rollback remains explicit:** omitting `experimentalIndexedDbBackend`
+  returns Web initialization to localStorage and does not read existing
+  IndexedDB data.
+- **Docs:** README and architecture docs now document stable vs beta install
+  constraints, JSON-encodable persisted values, Web storage security limits,
+  and the IndexedDB opt-in. No `all_observer` README example was added.
+
 ## 0.8.0
 
 IndexedDB hardening while keeping the active Web backend unchanged.
@@ -12,9 +34,17 @@ IndexedDB hardening while keeping the active Web backend unchanged.
   an AllBox IndexedDB connection closes on `versionchange`, so database
   deletion/version upgrades can proceed, and that truly blocked deletion is
   reported as an error instead of hanging.
+- **Activation-path regression coverage:** real-Chrome tests now prove that
+  the migration path can migrate legacy `localStorage` data, removes the
+  legacy copy only after IndexedDB accepts it, reloads from IndexedDB, and
+  reports `backendDetail: indexedDBMigration` through the inspector.
+- **Activation rollback/isolation coverage:** real-Chrome tests prove that
+  disabling the migration path sends `AllBox.init()` back to localStorage
+  without reading existing IndexedDB data, and that the migration path keeps
+  multiple containers isolated.
 - **Compatibility note:** `AllBox.init()` on Web still uses
   `window.localStorage` by default. The IndexedDB backend and migration
-  wrapper remain internal/inactive in this release.
+  wrapper remain internal/experimental in this release.
 
 ## 0.7.0
 

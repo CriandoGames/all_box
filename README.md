@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/tests-136-brightgreen" alt="136 tests">
+  <img src="https://img.shields.io/badge/tests-137-brightgreen" alt="137 tests">
 </p>
 
 <p align="center">
@@ -70,6 +70,14 @@ dart pub add all_box
 ```yaml
 dependencies:
   all_box: ^0.8.0
+```
+
+To try the IndexedDB Web backend before it becomes the default, install the
+beta explicitly:
+
+```yaml
+dependencies:
+  all_box: ^1.0.0-beta.1
 ```
 
 `all_box` is pure Dart and has a single entrypoint:
@@ -145,6 +153,22 @@ Strict validation accepts only letters, numbers, `.`, `_` and `-`, and
 rejects path-like or OS-reserved names such as `../data`, `a/b`,
 `cache:name`, `CON` and `NUL`.
 
+### Web IndexedDB beta
+
+In `1.0.0-beta.1`, Web still uses `window.localStorage` by default. You can
+opt into the migration-backed IndexedDB path explicitly:
+
+```dart
+final box = await AllBox.init(
+  'settings',
+  experimentalIndexedDbBackend: true,
+);
+```
+
+This is a beta backend. It migrates legacy `localStorage` data into
+IndexedDB and keeps `localStorage` as the default until the backend is
+validated further.
+
 ### Seeding data on first run
 
 ```dart
@@ -175,6 +199,11 @@ box.erase(); // clears everything
 
 await box.flushNow(); // forces a flush now, e.g. on AppLifecycleState.paused
 ```
+
+Persisted values should be JSON-encodable (`String`, `num`, `bool`, `null`,
+`List`, `Map`, or objects whose `toJson()` returns JSON-encodable data).
+Non-encodable values can live in memory but fail later when persistence
+runs.
 
 ### Persistence errors
 
@@ -211,14 +240,6 @@ await box.destroy(); // deletes persisted data, closes storage, unregisters it
 `destroy()` is a logical deletion API. It removes AllBox's `.db`, `.tmp` and
 `.bak` files on IO, or the Web storage key on Web, but it is not a secure
 wipe and does not claim to overwrite physical storage.
-
-### Value with a safe fallback
-
-```dart
-final box = AllBox('settings');
-final theme = box.readOrDefault<String>('theme', 'light');
-// Returns 'light' if the 'theme' key doesn't exist yet
-```
 
 ### Updating a widget after a write
 
@@ -354,7 +375,7 @@ full embedded database with queries, indexes or relations (see
 | Member | Description |
 | --- | --- |
 | `AllBox([container])` | Factory constructor; returns a singleton per container name. |
-| `static AllBox.init(container, {path, flushDelay, initialData, storage, onPersistenceError, validateContainerName})` | Loads `container` into memory and returns the initialized `AllBox`. `path` is required on IO platforms, ignored on Web. Container-name validation is opt-in for compatibility. |
+| `static AllBox.init(container, {path, flushDelay, initialData, storage, onPersistenceError, validateContainerName, experimentalIndexedDbBackend})` | Loads `container` into memory and returns the initialized `AllBox`. `path` is required on IO platforms, ignored on Web. Container-name validation is opt-in for compatibility. `experimentalIndexedDbBackend` is a Web beta opt-in; localStorage remains the default. |
 | `static AllBox.memory(container, {initialData})` | Recommended way to test code that consumes `all_box`: no real I/O, no real `Timer`. Replaces the deprecated `initWithMemoryBackendForTesting`. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Synchronous reads. |
 | `void write(key, value)` | Optimistic, debounced write. |
@@ -379,10 +400,11 @@ full embedded database with queries, indexes or relations (see
   names by default; strict mode is available through `validateContainerName`.
 - **Persistence failures are observable.** `onPersistenceError` reports
   async debounced failures without changing `write()` into an async API.
-- **Web is currently Window/localStorage only.** Web Workers, Service
-  Workers, safe multi-tab writes, and making IndexedDB the active backend are
-  future backend work; the internal IndexedDB testbed is not used by
-  `AllBox.init()` yet.
+- **Web is Window/localStorage by default.** `1.0.0-beta.1` adds explicit
+  opt-in for the IndexedDB migration backend through
+  `experimentalIndexedDbBackend: true`. Web Workers, Service Workers, safe
+  multi-tab writes, and making IndexedDB the default remain future backend
+  work.
 - **No built-in reactivity** — see [Need reactivity?](#-need-reactivity).
 
 The write-ahead + atomic-rename pipeline, flush/debounce coordination, the
@@ -422,6 +444,10 @@ in: custom type adapters for complex objects (Hive), a full embedded
 database with queries/indexes/relations (Isar), the Flutter ecosystem's
 most "standard" platform wrapper (SharedPreferences), or a storage library
 with built-in reactivity.
+
+Do not store secrets in plain text. Web storage is scoped to the browser
+origin and is not encrypted by `all_box`; encrypt sensitive values before
+writing them or use a platform secure-storage solution.
 
 ## 🧪 Testing
 

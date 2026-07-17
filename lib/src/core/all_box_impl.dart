@@ -210,6 +210,10 @@ class AllBox {
   /// `a/b`, `cache:name`, `CON`, `NUL`). Existing applications that already
   /// use such names can keep the default false and migrate deliberately.
   ///
+  /// [experimentalIndexedDbBackend] is an explicit Web-only opt-in for the
+  /// IndexedDB migration backend while it is being validated. The default
+  /// remains `window.localStorage`. It is ignored when [storage] is supplied.
+  ///
   /// **PT-BR:** Inicializa [container], carregando seus dados para a
   /// memória, para que as leituras seguintes sejam síncronas, e retorna a
   /// instância inicializada de [AllBox] (a mesma que `AllBox(container)`
@@ -248,6 +252,11 @@ class AllBox {
   ///
   /// Chamar [init] novamente para um container já inicializado é um no-op;
   /// o container mantém os dados que já tinha em memória.
+  ///
+  /// [experimentalIndexedDbBackend] é um opt-in explícito, somente Web, para
+  /// o backend IndexedDB com migração enquanto ele é validado. O padrão
+  /// continua sendo `window.localStorage`. É ignorado quando [storage] é
+  /// informado.
   static Future<AllBox> init(
     String container, {
     String? path,
@@ -256,6 +265,7 @@ class AllBox {
     AllBoxStorage? storage,
     void Function(AllBoxPersistenceError error)? onPersistenceError,
     bool validateContainerName = false,
+    bool experimentalIndexedDbBackend = false,
   }) async {
     final box = AllBox(container);
     if (box._initialized) return box;
@@ -267,6 +277,7 @@ class AllBox {
       storage: storage,
       onPersistenceError: onPersistenceError,
       validateContainerName: validateContainerName,
+      experimentalIndexedDbBackend: experimentalIndexedDbBackend,
     );
     final pending = _pendingInitializations[container];
     if (pending != null) {
@@ -274,7 +285,9 @@ class AllBox {
       throw StateError(
         'AllBox("$container") is already being initialized with different '
         'options. Concurrent init() calls for the same container must use '
-        'equivalent path, storage, initialData and flushDelay values.',
+        'equivalent path, storage, initialData, flushDelay, '
+        'onPersistenceError, validateContainerName and '
+        'experimentalIndexedDbBackend values.',
       );
     }
 
@@ -287,6 +300,7 @@ class AllBox {
       storage: storage,
       onPersistenceError: onPersistenceError,
       validateContainerName: validateContainerName,
+      experimentalIndexedDbBackend: experimentalIndexedDbBackend,
     )
         .whenComplete(() {
       if (identical(_pendingInitializations[container]?.future, future)) {
@@ -304,12 +318,14 @@ class AllBox {
     required AllBoxStorage? storage,
     required void Function(AllBoxPersistenceError error)? onPersistenceError,
     required bool validateContainerName,
+    required bool experimentalIndexedDbBackend,
   }) async {
     final resolvedStorage = storage ??
         AllBoxPlatformStorage.resolve(
           container: container,
           path: path,
           validateContainerName: validateContainerName,
+          experimentalIndexedDbBackend: experimentalIndexedDbBackend,
         );
     _onPersistenceError = onPersistenceError;
     final coordinator = _DebouncedFlushCoordinator(
@@ -795,6 +811,7 @@ class _InitializationConfig {
     required this.storage,
     required this.onPersistenceError,
     required this.validateContainerName,
+    required this.experimentalIndexedDbBackend,
   }) : initialData = Map<String, dynamic>.of(initialData);
 
   final String? path;
@@ -803,6 +820,7 @@ class _InitializationConfig {
   final AllBoxStorage? storage;
   final void Function(AllBoxPersistenceError error)? onPersistenceError;
   final bool validateContainerName;
+  final bool experimentalIndexedDbBackend;
 
   @override
   bool operator ==(Object other) {
@@ -812,6 +830,7 @@ class _InitializationConfig {
         identical(storage, other.storage) &&
         identical(onPersistenceError, other.onPersistenceError) &&
         validateContainerName == other.validateContainerName &&
+        experimentalIndexedDbBackend == other.experimentalIndexedDbBackend &&
         _deepEquals(initialData, other.initialData);
   }
 
@@ -822,6 +841,7 @@ class _InitializationConfig {
         identityHashCode(storage),
         identityHashCode(onPersistenceError),
         validateContainerName,
+        experimentalIndexedDbBackend,
         _deepHash(initialData),
       );
 }
