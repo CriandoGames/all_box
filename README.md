@@ -207,6 +207,16 @@ Persisted values should be JSON-encodable (`String`, `num`, `bool`, `null`,
 Non-encodable values can live in memory but fail later when persistence
 runs.
 
+Use the write tier that matches the moment:
+
+- `write()` for normal UI/app-state updates; it is synchronous, updates
+  memory immediately and lets AllBox batch persistence.
+- `writeAndSave()` when the next line of your code must wait until the
+  value was handed to storage, but you do not need the strongest disk-sync
+  guarantee.
+- `writeAndFlush()` before lifecycle boundaries or critical checkpoints
+  where you want the strongest durability the platform can provide.
+
 ### Persistence errors
 
 `write()` intentionally stays synchronous: it updates memory and schedules a

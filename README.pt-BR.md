@@ -204,6 +204,16 @@ Valores persistidos devem ser JSON-encodables (`String`, `num`, `bool`,
 JSON-encodables). Valores não encodables podem ficar em memória, mas falhar
 depois quando a persistência rodar.
 
+Use o nível de escrita que combina com o momento:
+
+- `write()` para updates normais de UI/estado local; ele é síncrono,
+  atualiza a memória imediatamente e deixa o AllBox agrupar a persistência.
+- `writeAndSave()` quando a próxima linha do seu código precisa esperar o
+  valor ser entregue ao storage, mas você não precisa da garantia mais forte
+  de sincronização em disco.
+- `writeAndFlush()` antes de mudanças de ciclo de vida ou checkpoints
+  críticos onde você quer a maior durabilidade que a plataforma oferece.
+
 ### Erros de persistência
 
 O `write()` continua síncrono de propósito: ele atualiza a memória e agenda
