@@ -4,11 +4,11 @@ import 'platform/all_box_target.dart' as target;
 /// Resolves the [AllBoxStorage] `AllBox.init()` should use when no explicit
 /// `storage:` argument was supplied, based on the current compile target:
 ///
-/// - **Web** (`dart.library.js_interop`): always uses `window.localStorage`
-///   via [target.createPlatformStorage]. `path`, if supplied, is silently
-///   ignored — passing it should never be an error, since callers that
-///   share `init()` code across IO and Web shouldn't have to special-case
-///   Web just because they always pass `path`.
+/// - **Web** (`dart.library.js_interop`): uses `window.localStorage` by
+///   default via [target.createPlatformStorage]. `path`, if supplied, is
+///   silently ignored — passing it should never be an error, since callers
+///   that share `init()` code across IO and Web shouldn't have to
+///   special-case Web just because they always pass `path`.
 /// - **IO** (`dart.library.io`): uses a real `<container>.db` file under
 ///   `path`. `path` is required here — see the [AllBoxStorageException]
 ///   thrown by the IO target when it's missing.
@@ -18,12 +18,11 @@ import 'platform/all_box_target.dart' as target;
 /// quando nenhum argumento `storage:` explícito foi passado, com base no
 /// alvo de compilação atual:
 ///
-/// - **Web** (`dart.library.js_interop`): sempre usa o
-///   `window.localStorage` via [target.createPlatformStorage]. `path`, se
-///   informado, é silenciosamente ignorado — passá-lo nunca deveria ser um
-///   erro, já que quem compartilha código de `init()` entre IO e Web não
-///   deveria precisar tratar a Web como caso especial só por sempre passar
-///   `path`.
+/// - **Web** (`dart.library.js_interop`): usa `window.localStorage` por
+///   padrão via [target.createPlatformStorage]. `path`, se informado, é
+///   silenciosamente ignorado — passá-lo nunca deveria ser um erro, já que
+///   quem compartilha código de `init()` entre IO e Web não deveria precisar
+///   tratar a Web como caso especial só por sempre passar `path`.
 /// - **IO** (`dart.library.io`): usa um arquivo `<container>.db` real sob
 ///   `path`. `path` é obrigatório aqui — veja a `AllBoxStorageException`
 ///   lançada pelo alvo IO quando ele está ausente.
@@ -54,11 +53,13 @@ class AllBoxPlatformStorage {
     required String container,
     String? path,
     bool validateContainerName = false,
+    bool experimentalIndexedDbBackend = false,
   }) {
     return target.createPlatformStorage(
       container: container,
       path: path,
       validateContainerName: validateContainerName,
+      experimentalIndexedDbBackend: experimentalIndexedDbBackend,
     );
   }
 }

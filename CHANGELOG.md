@@ -1,3 +1,56 @@
+## 1.0.0-beta.1
+
+Pre-release for validating the Web IndexedDB backend without changing the
+stable default.
+
+- **New beta Web opt-in:** `AllBox.init(...,
+  experimentalIndexedDbBackend: true)` routes Web containers through the
+  localStorage -> IndexedDB migration backend. The default remains
+  `window.localStorage`.
+- **No hidden browser flag:** the previous internal activation path was
+  replaced by an explicit init option, so apps can choose the backend in
+  code and tests can assert the behavior directly.
+- **Migration behavior remains conservative:** legacy localStorage data is
+  copied to IndexedDB first, and the legacy copy is removed only after the
+  IndexedDB write succeeds.
+- **IndexedDB multi-tab mitigation:** IndexedDB saves now merge a local
+  per-instance delta into the current persisted snapshot inside a single
+  readwrite transaction. Separate tabs/storage instances writing different
+  keys no longer overwrite each other; conflicting writes to the same key
+  remain last-write-wins.
+- **Rollback remains explicit:** omitting `experimentalIndexedDbBackend`
+  returns Web initialization to localStorage and does not read existing
+  IndexedDB data.
+- **Docs:** README and architecture docs now document stable vs beta install
+  constraints, JSON-encodable persisted values, Web storage security limits,
+  and the IndexedDB opt-in. No `all_observer` README example was added.
+
+## 0.8.0
+
+IndexedDB hardening while keeping the active Web backend unchanged.
+
+- **IndexedDB schema hardening:** the internal browser driver now verifies
+  that the expected `containers` object store exists after opening the
+  database. Incompatible databases fail with an explicit diagnostic instead
+  of surfacing later as a generic transaction failure.
+- **IndexedDB versioning regression coverage:** real-Chrome tests now assert
+  the internal schema version and required object store.
+- **Blocked/versionchange regression coverage:** real-Chrome tests prove that
+  an AllBox IndexedDB connection closes on `versionchange`, so database
+  deletion/version upgrades can proceed, and that truly blocked deletion is
+  reported as an error instead of hanging.
+- **Activation-path regression coverage:** real-Chrome tests now prove that
+  the migration path can migrate legacy `localStorage` data, removes the
+  legacy copy only after IndexedDB accepts it, reloads from IndexedDB, and
+  reports `backendDetail: indexedDBMigration` through the inspector.
+- **Activation rollback/isolation coverage:** real-Chrome tests prove that
+  disabling the migration path sends `AllBox.init()` back to localStorage
+  without reading existing IndexedDB data, and that the migration path keeps
+  multiple containers isolated.
+- **Compatibility note:** `AllBox.init()` on Web still uses
+  `window.localStorage` by default. The IndexedDB backend and migration
+  wrapper remain internal/experimental in this release.
+
 ## 0.7.0
 
 Reliability and release-infrastructure hardening, with a deliberately small
@@ -32,6 +85,20 @@ public API surface.
   (`tool/web_storage_benchmark.dart`) and an optional real-Chrome
   `window.localStorage` benchmark
   (`test/web/all_box_web_storage_browser_benchmark_test.dart`).
+- **Internal IndexedDB testbed:** added an inactive IndexedDB storage
+  implementation with VM/fake and real-Chrome regression coverage. It is not
+  used by `AllBox.init()` yet; the default Web backend remains
+  `window.localStorage`.
+- **Internal IndexedDB migration testbed:** added inactive localStorage ->
+  IndexedDB migration coverage. Tests prove IndexedDB-first precedence,
+  legacy-data migration, preservation of legacy data when migration fails,
+  fallback to localStorage when IndexedDB is unavailable, and delete behavior
+  across both stores.
+- **Inspector backend compatibility:** snapshots now keep
+  `AllBoxBackendKind.web` stable for the whole browser-storage family and add
+  the optional JSON/object field `backendDetail` for tooling that needs to
+  distinguish `localStorage`, `indexedDB`, and `indexedDBMigration`. The
+  mutation event kind/payload remains unchanged.
 - **Documentation:** README and architecture docs now document lifecycle,
   persistence-error handling, safe container names, corruption diagnostics,
   Web/localStorage limitations, multi-tab limitations and benchmark commands.

@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/testes-114-brightgreen" alt="114 testes">
+  <img src="https://img.shields.io/badge/testes-143-brightgreen" alt="143 testes">
 </p>
 
 <p align="center">
@@ -65,7 +65,15 @@ dart pub add all_box
 
 ```yaml
 dependencies:
-  all_box: ^0.7.0
+  all_box: ^0.8.0
+```
+
+Para testar o backend Web IndexedDB antes de ele virar default, instale a
+beta explicitamente:
+
+```yaml
+dependencies:
+  all_box: ^1.0.0-beta.1
 ```
 
 O `all_box` é Dart puro e tem um único ponto de entrada:
@@ -142,6 +150,24 @@ A validação estrita aceita apenas letras, números, `.`, `_` e `-`, e rejeita
 nomes que parecem caminhos ou nomes reservados do sistema operacional, como
 `../data`, `a/b`, `cache:name`, `CON` e `NUL`.
 
+### IndexedDB Web beta
+
+Na `1.0.0-beta.1`, a Web ainda usa `window.localStorage` por padrão. Você
+pode optar explicitamente pelo caminho IndexedDB com migração:
+
+```dart
+final box = await AllBox.init(
+  'settings',
+  experimentalIndexedDbBackend: true,
+);
+```
+
+Esse backend ainda é beta. Ele migra dados legados do `localStorage` para o
+IndexedDB e mantém `localStorage` como default até a validação avançar.
+Quando abas separadas escrevem chaves diferentes, o backend IndexedDB beta
+faz merge dessas mudanças em uma única transação IndexedDB. Se duas abas
+escrevem a mesma chave, a última escrita persistida vence.
+
 ### Semeando dados no primeiro run
 
 ```dart
@@ -172,6 +198,21 @@ box.erase(); // limpa tudo
 
 await box.flushNow(); // força um flush agora, ex.: em AppLifecycleState.paused
 ```
+
+Valores persistidos devem ser JSON-encodables (`String`, `num`, `bool`,
+`null`, `List`, `Map`, ou objetos cujo `toJson()` retorne dados
+JSON-encodables). Valores não encodables podem ficar em memória, mas falhar
+depois quando a persistência rodar.
+
+Use o nível de escrita que combina com o momento:
+
+- `write()` para updates normais de UI/estado local; ele é síncrono,
+  atualiza a memória imediatamente e deixa o AllBox agrupar a persistência.
+- `writeAndSave()` quando a próxima linha do seu código precisa esperar o
+  valor ser entregue ao storage, mas você não precisa da garantia mais forte
+  de sincronização em disco.
+- `writeAndFlush()` antes de mudanças de ciclo de vida ou checkpoints
+  críticos onde você quer a maior durabilidade que a plataforma oferece.
 
 ### Erros de persistência
 
@@ -209,14 +250,6 @@ await box.destroy(); // apaga dados persistidos, fecha o storage e remove
 `destroy()` é uma API de exclusão lógica. Ela remove os arquivos `.db`,
 `.tmp` e `.bak` no IO, ou a chave de storage na Web, mas não é um secure
 wipe e não promete sobrescrever fisicamente o armazenamento.
-
-### Valor com fallback seguro
-
-```dart
-final box = AllBox('settings');
-final theme = box.readOrDefault<String>('theme', 'light');
-// Retorna 'light' se a chave 'theme' ainda não existir
-```
 
 ### Atualizando um widget depois de uma escrita
 
@@ -355,7 +388,7 @@ com queries, índices ou relações (veja
 | Member | Descrição |
 | --- | --- |
 | `AllBox([container])` | Factory constructor; retorna um singleton por nome de container. |
-| `static AllBox.init(container, {path, flushDelay, initialData, storage, onPersistenceError, validateContainerName})` | Carrega o `container` para a memória e retorna o `AllBox` inicializado. `path` é obrigatório em plataformas IO, ignorado na Web. Validação de nome é opt-in por compatibilidade. |
+| `static AllBox.init(container, {path, flushDelay, initialData, storage, onPersistenceError, validateContainerName, experimentalIndexedDbBackend})` | Carrega o `container` para a memória e retorna o `AllBox` inicializado. `path` é obrigatório em plataformas IO, ignorado na Web. Validação de nome é opt-in por compatibilidade. `experimentalIndexedDbBackend` é opt-in beta na Web; localStorage continua sendo o default. |
 | `static AllBox.memory(container, {initialData})` | Forma recomendada de testar código que consome o `all_box`: sem I/O real, sem `Timer` real. Substitui o descontinuado `initWithMemoryBackendForTesting`. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Leituras síncronas. |
 | `void write(key, value)` | Escrita otimista + debounced. |
@@ -382,9 +415,13 @@ O `all_box` segue uma lista curta de decisões de design deliberadas:
   `validateContainerName`.
 - **Falhas de persistência são observáveis.** `onPersistenceError` reporta
   falhas assíncronas do flush debounced sem tornar `write()` assíncrono.
-- **Web atualmente é apenas Window/localStorage.** Web Workers, Service
-  Workers, escritas multiaba seguras e IndexedDB são trabalho futuro de
-  backend, não promessas do backend atual baseado em localStorage.
+- **Web usa Window/localStorage por padrão.** A `1.0.0-beta.1` adiciona
+  opt-in explícito para o backend IndexedDB com migração via
+  `experimentalIndexedDbBackend: true`. O backend IndexedDB beta mitiga
+  perda de updates multiaba para chaves diferentes usando merge
+  transacional por delta; conflitos na mesma chave continuam last-write-wins.
+  Web Workers, Service Workers e tornar IndexedDB o default continuam sendo
+  trabalho futuro de backend.
 - **Sem reatividade embutida** — veja
   [Precisa de reatividade?](#-precisa-de-reatividade).
 
@@ -427,6 +464,11 @@ melhor: adapters de tipo customizado para objetos complexos (Hive), um
 banco de dados embarcado completo com queries/índices/relações (Isar), o
 wrapper de plataforma mais "padrão" do ecossistema Flutter
 (SharedPreferences), ou uma lib de storage com reatividade embutida.
+
+Não grave segredos em texto puro. O storage Web é isolado pela origem do
+navegador e não é criptografado pelo `all_box`; criptografe valores
+sensíveis antes de escrever ou use uma solução de secure storage da
+plataforma.
 
 ## 🧪 Testes
 

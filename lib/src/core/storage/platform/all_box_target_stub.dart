@@ -14,6 +14,7 @@ AllBoxStorage createPlatformStorage({
   required String container,
   String? path,
   bool validateContainerName = false,
+  bool experimentalIndexedDbBackend = false,
 }) {
   return const AllBoxUnsupportedStorage();
 }

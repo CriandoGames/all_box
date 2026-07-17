@@ -54,6 +54,7 @@ class AllBoxContainerSnapshot {
     required this.container,
     required this.isInitialized,
     required this.backend,
+    this.backendDetail,
     required this.pendingFlush,
     required this.entries,
     required this.approximateSizeBytes,
@@ -80,6 +81,13 @@ class AllBoxContainerSnapshot {
   ///
   /// **PT-BR:** Com qual backend de storage este container é persistido.
   final AllBoxBackendKind backend;
+
+  /// Optional backend detail for tooling that wants to distinguish concrete
+  /// implementations without expanding [AllBoxBackendKind].
+  ///
+  /// For example, Web remains [AllBoxBackendKind.web] while this field can
+  /// be `localStorage`, `indexedDB`, or `indexedDBMigration`.
+  final String? backendDetail;
 
   /// Whether there is a debounced write waiting to be flushed to storage
   /// (i.e. memory and disk/browser storage may currently disagree).
@@ -153,6 +161,7 @@ class AllBoxContainerSnapshot {
       'container': container,
       'isInitialized': isInitialized,
       'backend': backend.name,
+      'backendDetail': backendDetail,
       'pendingFlush': pendingFlush,
       'entries': _jsonSafeEntries(entries),
       'approximateSizeBytes': approximateSizeBytes,
@@ -175,6 +184,7 @@ class AllBoxContainerSnapshot {
   @override
   String toString() => 'AllBoxContainerSnapshot(container: $container, '
       'isInitialized: $isInitialized, backend: $backend, '
-      'pendingFlush: $pendingFlush, ${entries.length} keys, '
+      'backendDetail: $backendDetail, pendingFlush: $pendingFlush, '
+      '${entries.length} keys, '
       '~$approximateSizeBytes bytes)';
 }

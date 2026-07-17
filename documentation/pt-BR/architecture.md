@@ -100,9 +100,9 @@ app.
 A inicialização é serializada por container. Chamadas concorrentes com
 opções equivalentes compartilham o mesmo `Future` de inicialização em
 andamento. Chamadas concorrentes com `path`, `storage`, `initialData`,
-`flushDelay`, `onPersistenceError` ou `validateContainerName` conflitantes
-são rejeitadas com `StateError`, em vez de deixar uma configuração vencer
-de forma não determinística.
+`flushDelay`, `onPersistenceError`, `validateContainerName` ou
+`experimentalIndexedDbBackend` conflitantes são rejeitadas com `StateError`,
+em vez de deixar uma configuração vencer de forma não determinística.
 
 Quando o seed de first-run falha ao persistir, a inicialização faz rollback:
 o container fica não inicializado, os dados em memória são limpos e uma
@@ -142,6 +142,15 @@ caminho.
 no tempo. As entradas do snapshot são copiadas profundamente e ficam
 imutáveis para maps e listas, então mutar um valor depois que o snapshot foi
 criado não altera o retrato já entregue para ferramentas.
+
+O reporte de backend do inspector prioriza compatibilidade. O valor público
+`AllBoxBackendKind.web` continua sendo a categoria estável para storage de
+navegador, incluindo o testbed interno de IndexedDB e o wrapper de migração.
+Ferramentas que precisam da implementação concreta podem ler o campo
+opcional `backendDetail` (`localStorage`, `indexedDB` ou
+`indexedDBMigration`) no objeto/JSON do snapshot em vez de depender de novos
+valores no enum. Os eventos de extensão de mutação mantêm o mesmo tipo e
+payload.
 
 ## Aviso de serialização em debug
 
@@ -188,6 +197,49 @@ escrevendo a partir de snapshots antigos ainda podem perder dados. Esta é
 uma limitação arquitetural documentada até existir um protocolo de
 revisão/conflito e um backend adequado para coordenação entre contextos.
 
+Existe um backend interno de storage IndexedDB por trás de
+`AllBoxIndexedDbStorage` e `AllBoxBrowserIndexedDbDriver`, coberto por
+testes regressivos VM/fake e Chrome real. Ele não é o backend Web padrão:
+`AllBox.init()` continua resolvendo para `window.localStorage` salvo quando
+quem chama opta explicitamente pelo backend beta com migração usando
+`experimentalIndexedDbBackend: true`. A compatibilidade do inspector para a
+família de backends Web é coberta abaixo.
+
+O caminho de migração de localStorage -> IndexedDB está implementado como
+`AllBoxIndexedDbMigrationStorage` e é selecionado apenas pelo opt-in beta
+explícito. Os testes cobrem leitura de dados legados no localStorage,
+precedência do IndexedDB, migração que remove a cópia legada somente depois
+de uma gravação IndexedDB bem-sucedida, fallback para localStorage quando
+IndexedDB falha, e delete atravessando os dois stores.
+A compatibilidade do inspector é coberta separadamente: todos os backends da
+família Web continuam reportando `backend: web`, com `backendDetail`
+identificando o backend concreto.
+
+Escritas IndexedDB usam merge por delta por instância em vez de sobrescrever
+cegamente o snapshot persistido inteiro. Cada instância de storage lembra o
+snapshot que carregou ou salvou localmente por último. No save, ela calcula
+as chaves alteradas ou removidas por essa instância, abre uma única
+transação IndexedDB `readwrite`, lê o JSON persistido atual dentro dessa
+transação, aplica apenas o delta local e grava o JSON mesclado de volta.
+Isso mitiga o caso comum de lost update multiaba em que duas abas escrevem
+chaves diferentes a partir de snapshots antigos. Se duas abas escrevem ou
+removem a mesma chave, a escrita persistida por último vence; o AllBox não
+expõe documentos de conflito no estilo PouchDB.
+
+O driver IndexedDB interno de navegador usa schema version 1 com um único
+object store `containers`. Depois de abrir um banco, ele verifica se esse
+store existe, então um banco incompatível é reportado com um diagnóstico
+claro de schema em vez de falhar depois durante uma transação. Testes
+regressivos em navegador também cobrem auto-close em `versionchange` e erro
+explícito quando uma exclusão fica bloqueada. Esse hardening ainda não torna
+IndexedDB o backend Web padrão.
+
+O opt-in beta também é reversível por desenho: remover
+`experimentalIndexedDbBackend: true` faz `AllBox.init()` voltar para o
+backend localStorage e não ler dados existentes no IndexedDB. Testes
+regressivos em navegador cobrem esse comportamento de rollback e cobrem
+isolamento de múltiplos containers através do wrapper de migração.
+
 ## Benchmarks
 
 `tool/web_storage_benchmark.dart` fornece um relatório leve de benchmark
@@ -223,11 +275,13 @@ ambiente/navegador antes de fazer afirmações de desempenho sobre bloqueio de
   lança uma `AllBoxStorageException`. Os dados não são criptografados: não
   guarde segredos ou dados sensíveis num container Web sem criptografá-los
   você mesmo antes. Não recomendado para grandes volumes de dados.
-- **O backend Web embutido é somente Window e não é seguro para multiaba.**
+- **O backend Web default é somente Window e não é seguro para multiaba.**
   Ele usa `window.localStorage` e mantém sincronização apenas dentro da
   janela/isolate Dart atual. Web Workers, Service Workers e escritas
-  multiaba seguras exigem outro backend/contrato, como um desenho futuro
-  baseado em IndexedDB.
+  multiaba seguras exigem outro backend/contrato. O backend IndexedDB beta
+  mitiga sobrescrita por snapshot antigo para chaves diferentes, mas
+  conflitos na mesma chave continuam last-write-wins e não há API de
+  notificação reativa cross-tab.
 - **Não é isolate-safe.** Cada `AllBox` mantém seu estado em memória no
   isolate onde foi inicializado; não há sincronização entre isolates. Se
   você usa múltiplos isolates (ex.: `compute()`, isolates de background),
