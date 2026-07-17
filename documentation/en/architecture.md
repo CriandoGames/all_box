@@ -133,6 +133,14 @@ snapshots. Snapshot entries are deeply copied and made unmodifiable for
 maps and lists, so mutating a value after the snapshot is created does not
 change the snapshot already handed to tooling.
 
+Inspector backend reporting is intentionally compatibility-first. The public
+`AllBoxBackendKind.web` enum value remains the stable category for browser
+storage, including the internal IndexedDB testbed and migration wrapper.
+Tools that need the concrete implementation can read the optional
+`backendDetail` field (`localStorage`, `indexedDB`, or
+`indexedDBMigration`) from the snapshot object/JSON instead of switching on
+new enum values. Mutation extension events keep the same kind and payload.
+
 ## Debug-only serialization warning
 
 `write()`/`writeAndSave()`/`writeAndFlush()` call `jsonEncode` on the value
@@ -176,6 +184,29 @@ singleton registry only protects one Dart isolate/window. Two tabs writing
 from stale snapshots can still lose data. This is a documented architectural
 limitation until a revision/conflict protocol and a backend suitable for
 cross-context coordination are designed.
+
+An internal IndexedDB storage testbed exists behind
+`AllBoxIndexedDbStorage` and `AllBoxBrowserIndexedDbDriver`, with VM/fake
+and real-Chrome regression tests. It is intentionally not wired into
+`AllBox.init()` yet: the default Web backend remains `window.localStorage`
+while the full migration/default-switch plan is validated. Inspector
+compatibility for the inactive backends is covered below; safe multi-tab
+behavior still needs a separate design.
+
+The localStorage -> IndexedDB migration path is also implemented as an
+inactive internal wrapper (`AllBoxIndexedDbMigrationStorage`). Its tests
+cover legacy localStorage reads, IndexedDB-first precedence, migration that
+removes the legacy copy only after a successful IndexedDB write, IndexedDB
+failure fallback to localStorage, and delete behavior across both stores.
+Inspector compatibility is covered separately: all Web-family backends still
+report `backend: web`, with `backendDetail` identifying the concrete backend.
+
+The internal IndexedDB browser driver uses schema version 1 with a single
+`containers` object store. After opening a database it verifies that this
+store exists, so an incompatible database is reported with a clear schema
+diagnostic instead of failing later during a transaction. Browser regression
+tests also cover `versionchange` auto-close behavior and blocked deletion
+errors. This hardening still does not make IndexedDB the default Web backend.
 
 ## Benchmarks
 

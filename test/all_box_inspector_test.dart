@@ -14,6 +14,9 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 import 'package:all_box/all_box.dart';
+import 'package:all_box/src/core/storage/all_box_indexed_db_migration_storage.dart';
+import 'package:all_box/src/core/storage/all_box_indexed_db_storage.dart';
+import 'package:all_box/src/core/storage/all_box_web_storage.dart';
 
 Future<Directory> _tempDir(String label) async {
   final dir =
@@ -25,6 +28,50 @@ Future<Directory> _tempDir(String label) async {
     }
   });
   return dir;
+}
+
+class _InspectorIndexedDbDriver implements AllBoxIndexedDbDriver {
+  final Map<String, String> values = <String, String>{};
+
+  @override
+  Future<bool> contains(String container) async {
+    return values.containsKey(container);
+  }
+
+  @override
+  Future<String?> read(String container) async {
+    return values[container];
+  }
+
+  @override
+  Future<void> write(String container, String jsonText) async {
+    values[container] = jsonText;
+  }
+
+  @override
+  Future<void> delete(String container) async {
+    values.remove(container);
+  }
+
+  @override
+  Future<void> close() async {}
+}
+
+class _InspectorLegacyStorage implements AllBoxBrowserStorage {
+  final Map<String, String> values = <String, String>{};
+
+  @override
+  String? getItem(String key) => values[key];
+
+  @override
+  void setItem(String key, String value) {
+    values[key] = value;
+  }
+
+  @override
+  void removeItem(String key) {
+    values.remove(key);
+  }
 }
 
 void main() {
@@ -44,6 +91,7 @@ void main() {
       expect(snap!.container, container);
       expect(snap.isInitialized, isTrue);
       expect(snap.backend, AllBoxBackendKind.memory);
+      expect(snap.backendDetail, 'memory');
       expect(snap.pendingFlush, isFalse);
       expect(snap.entries, <String, dynamic>{'a': 1, 'b': 'two', 'c': true});
       expect(snap.keys, containsAll(<String>['a', 'b', 'c']));
@@ -70,6 +118,7 @@ void main() {
 
       final snap = AllBoxInspector.snapshotOf(container)!;
       expect(snap.backend, AllBoxBackendKind.io);
+      expect(snap.backendDetail, 'file');
       // write() is debounced: right after the call, the flush is still
       // pending.
       expect(snap.pendingFlush, isTrue);
@@ -90,6 +139,62 @@ void main() {
       expect(snap.isInitialized, isFalse);
       expect(snap.entries, isEmpty);
       expect(snap.backend, AllBoxBackendKind.unsupported);
+      expect(snap.backendDetail, isNull);
+    });
+
+    test('reports localStorage-compatible Web storage without changing enum',
+        () async {
+      const container = 'inspector_web_local_storage';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      await AllBox.init(
+        container,
+        storage: AllBoxWebStorage(
+          container: container,
+          browserStorage: _InspectorLegacyStorage(),
+        ),
+        flushDelay: const Duration(milliseconds: 200),
+      );
+
+      final snap = AllBoxInspector.snapshotOf(container)!;
+      expect(snap.backend, AllBoxBackendKind.web);
+      expect(snap.backendDetail, 'localStorage');
+    });
+
+    test('reports IndexedDB storage as Web with an indexedDB detail', () async {
+      const container = 'inspector_indexed_db';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      await AllBox.init(
+        container,
+        storage: AllBoxIndexedDbStorage(
+          container: container,
+          driver: _InspectorIndexedDbDriver(),
+        ),
+      );
+
+      final snap = AllBoxInspector.snapshotOf(container)!;
+      expect(snap.backend, AllBoxBackendKind.web);
+      expect(snap.backendDetail, 'indexedDB');
+    });
+
+    test('reports IndexedDB migration storage as Web with a migration detail',
+        () async {
+      const container = 'inspector_indexed_db_migration';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      await AllBox.init(
+        container,
+        storage: AllBoxIndexedDbMigrationStorage(
+          container: container,
+          indexedDb: _InspectorIndexedDbDriver(),
+          legacyStorage: _InspectorLegacyStorage(),
+        ),
+      );
+
+      final snap = AllBoxInspector.snapshotOf(container)!;
+      expect(snap.backend, AllBoxBackendKind.web);
+      expect(snap.backendDetail, 'indexedDBMigration');
     });
 
     test('unknown container returns null', () {
@@ -161,6 +266,7 @@ void main() {
       final decodedSingle = jsonDecode(single) as Map<String, dynamic>;
       expect(decodedSingle['container'], container);
       expect(decodedSingle['backend'], 'memory');
+      expect(decodedSingle['backendDetail'], 'memory');
       expect(decodedSingle['entries'], <String, dynamic>{
         'a': 1,
         'nested': <String, dynamic>{'x': true},
@@ -171,6 +277,25 @@ void main() {
         all.cast<Map<String, dynamic>>().map((m) => m['container']),
         contains(container),
       );
+    });
+
+    test('snapshot JSON keeps Web backend stable and exposes backend detail',
+        () async {
+      const container = 'inspector_json_indexed_db';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      await AllBox.init(
+        container,
+        storage: AllBoxIndexedDbStorage(
+          container: container,
+          driver: _InspectorIndexedDbDriver(),
+        ),
+      );
+
+      final json = AllBoxInspector.snapshotOfAsJson(container);
+      final decoded = jsonDecode(json) as Map<String, dynamic>;
+      expect(decoded['backend'], 'web');
+      expect(decoded['backendDetail'], 'indexedDB');
     });
 
     test('unknown container -> literal "null"', () {

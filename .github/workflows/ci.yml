@@ -45,4 +45,6 @@ jobs:
           sdk: stable
       - run: dart pub get
       - run: dart test -p chrome test/web/all_box_web_storage_browser_test.dart --reporter expanded
+      - run: dart test -p chrome test/web/all_box_indexed_db_storage_browser_test.dart --reporter expanded
+      - run: dart test -p chrome test/web/all_box_indexed_db_migration_storage_browser_test.dart --reporter expanded
       - run: dart compile wasm tool/wasm_compile_smoke.dart -o build/wasm_compile_smoke/wasm_compile_smoke.wasm

@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/tests-114-brightgreen" alt="114 tests">
+  <img src="https://img.shields.io/badge/tests-136-brightgreen" alt="136 tests">
 </p>
 
 <p align="center">
@@ -69,7 +69,7 @@ dart pub add all_box
 
 ```yaml
 dependencies:
-  all_box: ^0.7.0
+  all_box: ^0.8.0
 ```
 
 `all_box` is pure Dart and has a single entrypoint:
@@ -380,8 +380,9 @@ full embedded database with queries, indexes or relations (see
 - **Persistence failures are observable.** `onPersistenceError` reports
   async debounced failures without changing `write()` into an async API.
 - **Web is currently Window/localStorage only.** Web Workers, Service
-  Workers, safe multi-tab writes, and IndexedDB are future backend work, not
-  promises of the current localStorage backend.
+  Workers, safe multi-tab writes, and making IndexedDB the active backend are
+  future backend work; the internal IndexedDB testbed is not used by
+  `AllBox.init()` yet.
 - **No built-in reactivity** — see [Need reactivity?](#-need-reactivity).
 
 The write-ahead + atomic-rename pipeline, flush/debounce coordination, the

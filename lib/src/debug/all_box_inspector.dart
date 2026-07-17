@@ -164,6 +164,7 @@ class AllBoxInspector {
         container: box.container,
         isInitialized: false,
         backend: AllBoxBackendKind.unsupported,
+        backendDetail: null,
         pendingFlush: false,
         entries: const <String, dynamic>{},
         approximateSizeBytes: 0,
@@ -174,6 +175,7 @@ class AllBoxInspector {
       container: box.container,
       isInitialized: true,
       backend: _backendOf(box._flush),
+      backendDetail: _backendDetailOf(box._flush),
       pendingFlush: _pendingFlushOf(box._flush),
       entries: _deepImmutableMap(box._box),
       approximateSizeBytes: _approximateSizeOf(box._box),
@@ -196,6 +198,8 @@ class AllBoxInspector {
         case 'AllBoxIoStorage':
           return AllBoxBackendKind.io;
         case 'AllBoxWebStorage':
+        case 'AllBoxIndexedDbStorage':
+        case 'AllBoxIndexedDbMigrationStorage':
           return AllBoxBackendKind.web;
         case 'AllBoxUnsupportedStorage':
           return AllBoxBackendKind.unsupported;
@@ -204,6 +208,25 @@ class AllBoxInspector {
       }
     }
     return AllBoxBackendKind.unsupported;
+  }
+
+  static String? _backendDetailOf(_FlushCoordinator? flush) {
+    if (flush is _ImmediateFlushCoordinator) return 'memory';
+    if (flush is _DebouncedFlushCoordinator) {
+      switch (flush._storage.runtimeType.toString()) {
+        case 'AllBoxIoStorage':
+          return 'file';
+        case 'AllBoxWebStorage':
+          return 'localStorage';
+        case 'AllBoxIndexedDbStorage':
+          return 'indexedDB';
+        case 'AllBoxIndexedDbMigrationStorage':
+          return 'indexedDBMigration';
+        default:
+          return null;
+      }
+    }
+    return null;
   }
 
   static bool _pendingFlushOf(_FlushCoordinator? flush) {

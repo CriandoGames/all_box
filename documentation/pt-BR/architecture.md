@@ -143,6 +143,15 @@ no tempo. As entradas do snapshot são copiadas profundamente e ficam
 imutáveis para maps e listas, então mutar um valor depois que o snapshot foi
 criado não altera o retrato já entregue para ferramentas.
 
+O reporte de backend do inspector prioriza compatibilidade. O valor público
+`AllBoxBackendKind.web` continua sendo a categoria estável para storage de
+navegador, incluindo o testbed interno de IndexedDB e o wrapper de migração.
+Ferramentas que precisam da implementação concreta podem ler o campo
+opcional `backendDetail` (`localStorage`, `indexedDB` ou
+`indexedDBMigration`) no objeto/JSON do snapshot em vez de depender de novos
+valores no enum. Os eventos de extensão de mutação mantêm o mesmo tipo e
+payload.
+
 ## Aviso de serialização em debug
 
 `write()`/`writeAndSave()`/`writeAndFlush()` chamam `jsonEncode` no valor
@@ -187,6 +196,33 @@ registro singleton protege apenas uma janela/isolate Dart. Duas abas
 escrevendo a partir de snapshots antigos ainda podem perder dados. Esta é
 uma limitação arquitetural documentada até existir um protocolo de
 revisão/conflito e um backend adequado para coordenação entre contextos.
+
+Existe um testbed interno de storage IndexedDB por trás de
+`AllBoxIndexedDbStorage` e `AllBoxBrowserIndexedDbDriver`, coberto por
+testes regressivos VM/fake e Chrome real. Ele intencionalmente ainda não é
+conectado ao `AllBox.init()`: o backend Web padrão continua sendo
+`window.localStorage` enquanto o plano completo de migração/troca de default
+é validado. A compatibilidade do inspector para os backends inativos é
+coberta abaixo; comportamento multiaba seguro ainda precisa de um desenho
+separado.
+
+O caminho de migração de localStorage -> IndexedDB também está implementado
+como um wrapper interno inativo (`AllBoxIndexedDbMigrationStorage`). Os testes
+cobrem leitura de dados legados no localStorage, precedência do IndexedDB,
+migração que remove a cópia legada somente depois de uma gravação IndexedDB
+bem-sucedida, fallback para localStorage quando IndexedDB falha, e delete
+atravessando os dois stores.
+A compatibilidade do inspector é coberta separadamente: todos os backends da
+família Web continuam reportando `backend: web`, com `backendDetail`
+identificando o backend concreto.
+
+O driver IndexedDB interno de navegador usa schema version 1 com um único
+object store `containers`. Depois de abrir um banco, ele verifica se esse
+store existe, então um banco incompatível é reportado com um diagnóstico
+claro de schema em vez de falhar depois durante uma transação. Testes
+regressivos em navegador também cobrem auto-close em `versionchange` e erro
+explícito quando uma exclusão fica bloqueada. Esse hardening ainda não torna
+IndexedDB o backend Web padrão.
 
 ## Benchmarks
 

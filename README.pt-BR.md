@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/testes-114-brightgreen" alt="114 testes">
+  <img src="https://img.shields.io/badge/testes-136-brightgreen" alt="136 testes">
 </p>
 
 <p align="center">
@@ -65,7 +65,7 @@ dart pub add all_box
 
 ```yaml
 dependencies:
-  all_box: ^0.7.0
+  all_box: ^0.8.0
 ```
 
 O `all_box` é Dart puro e tem um único ponto de entrada:
@@ -383,8 +383,9 @@ O `all_box` segue uma lista curta de decisões de design deliberadas:
 - **Falhas de persistência são observáveis.** `onPersistenceError` reporta
   falhas assíncronas do flush debounced sem tornar `write()` assíncrono.
 - **Web atualmente é apenas Window/localStorage.** Web Workers, Service
-  Workers, escritas multiaba seguras e IndexedDB são trabalho futuro de
-  backend, não promessas do backend atual baseado em localStorage.
+  Workers, escritas multiaba seguras e ativar IndexedDB como backend são
+  trabalho futuro de backend; o testbed interno de IndexedDB ainda não é
+  usado por `AllBox.init()`.
 - **Sem reatividade embutida** — veja
   [Precisa de reatividade?](#-precisa-de-reatividade).
 
