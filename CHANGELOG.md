@@ -1,3 +1,12 @@
+## 1.0.0-beta.2
+
+Documentation and release metadata correction for the beta channel.
+
+- **Docs:** stable install examples now point to the released `^0.7.0`.
+- **Docs:** beta install examples now point to `^1.0.0-beta.2`.
+- **Changelog:** IndexedDB hardening notes stay under `1.0.0-beta.1`;
+  no unpublished intermediate release is documented.
+
 ## 1.0.0-beta.1
 
 Pre-release for validating the Web IndexedDB backend without changing the
@@ -21,14 +30,6 @@ stable default.
 - **Rollback remains explicit:** omitting `experimentalIndexedDbBackend`
   returns Web initialization to localStorage and does not read existing
   IndexedDB data.
-- **Docs:** README and architecture docs now document stable vs beta install
-  constraints, JSON-encodable persisted values, Web storage security limits,
-  and the IndexedDB opt-in. No `all_observer` README example was added.
-
-## 0.8.0
-
-IndexedDB hardening while keeping the active Web backend unchanged.
-
 - **IndexedDB schema hardening:** the internal browser driver now verifies
   that the expected `containers` object store exists after opening the
   database. Incompatible databases fail with an explicit diagnostic instead
@@ -49,7 +50,10 @@ IndexedDB hardening while keeping the active Web backend unchanged.
   multiple containers isolated.
 - **Compatibility note:** `AllBox.init()` on Web still uses
   `window.localStorage` by default. The IndexedDB backend and migration
-  wrapper remain internal/experimental in this release.
+  wrapper remain experimental and opt-in in this beta.
+- **Docs:** README and architecture docs now document stable vs beta install
+  constraints, JSON-encodable persisted values, Web storage security limits,
+  and the IndexedDB opt-in. No `all_observer` README example was added.
 
 ## 0.7.0
 

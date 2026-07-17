@@ -2,7 +2,7 @@ name: all_box
 description: >
   Synchronous, lightweight key-value storage with crash-safe writes
   (write-ahead + atomic rename)
-version: 1.0.0-beta.1
+version: 1.0.0-beta.2
 homepage: https://github.com/CriandoGames/all_box
 repository: https://github.com/CriandoGames/all_box
 issue_tracker: https://github.com/CriandoGames/all_box/issues
