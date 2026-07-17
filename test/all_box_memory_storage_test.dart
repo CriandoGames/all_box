@@ -125,13 +125,15 @@ void main() {
       expect(box.hasData('k'), isFalse);
     });
 
-    test('calling memory() again for an already-initialized container is a '
+    test(
+        'calling memory() again for an already-initialized container is a '
         'no-op', () async {
       const container = 'memory_reinit_noop_test';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
 
       final first = await AllBox.memory(container, initialData: {'k': 'v'});
-      final second = await AllBox.memory(container, initialData: {'k': 'ignored'});
+      final second =
+          await AllBox.memory(container, initialData: {'k': 'ignored'});
 
       expect(identical(first, second), isTrue);
       expect(second.read<String>('k'), 'v');
@@ -159,7 +161,8 @@ void main() {
       expect(box.read<String>('key_4999'), 'value_4999');
     });
 
-    test('reading 5,000 keys back stays fast (regression guard, not a '
+    test(
+        'reading 5,000 keys back stays fast (regression guard, not a '
         'strict benchmark)', () async {
       const container = 'memory_large_read_perf_test';
       addTearDown(() => AllBox.resetInstanceForTesting(container));

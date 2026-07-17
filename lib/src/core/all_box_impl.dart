@@ -15,6 +15,43 @@ export 'storage/all_box_storage_exception.dart' show AllBoxStorageException;
 part '../debug/all_box_container_snapshot.dart';
 part '../debug/all_box_inspector.dart';
 
+/// Describes a failed persistence operation after memory was already updated.
+///
+/// Reported through `AllBox.init(onPersistenceError: ...)`. The original
+/// failure is available in [cause] and [stackTrace].
+class AllBoxPersistenceError {
+  /// Creates a persistence error report.
+  AllBoxPersistenceError({
+    required this.container,
+    required this.operation,
+    required this.cause,
+    required this.stackTrace,
+    required this.hasUnpersistedChanges,
+  });
+
+  /// The container whose persistence operation failed.
+  final String container;
+
+  /// The AllBox operation that attempted persistence.
+  final String operation;
+
+  /// The original error thrown by the storage backend.
+  final Object cause;
+
+  /// Stack trace captured with [cause].
+  final StackTrace stackTrace;
+
+  /// Whether memory may contain changes not yet persisted to storage.
+  final bool hasUnpersistedChanges;
+
+  @override
+  String toString() {
+    return 'AllBoxPersistenceError(container: $container, '
+        'operation: $operation, hasUnpersistedChanges: '
+        '$hasUnpersistedChanges, cause: $cause)';
+  }
+}
+
 /// Whether the current build is a debug build.
 ///
 /// Pure Dart equivalent of Flutter's `kDebugMode`, computed via [assert]
@@ -80,6 +117,10 @@ void allBoxDebugLog(Object message) {
 /// `localStorage`. Qual backend de storage usar é resolvido automaticamente
 /// a partir do alvo de compilação — veja [init].
 class AllBox {
+  /// Returns the singleton [AllBox] instance for [container].
+  ///
+  /// Call [init] or [memory] before reading or writing unless the container
+  /// has already been initialized elsewhere.
   factory AllBox([String container = defaultContainerName]) {
     return _instances.putIfAbsent(container, () => AllBox._internal(container));
   }
@@ -110,6 +151,8 @@ class AllBox {
   final String container;
 
   static final Map<String, AllBox> _instances = <String, AllBox>{};
+  static final Map<String, _PendingInitialization> _pendingInitializations =
+      <String, _PendingInitialization>{};
 
   /// In-memory, synchronously-readable data for this container.
   ///
@@ -117,6 +160,7 @@ class AllBox {
   final Map<String, dynamic> _box = <String, dynamic>{};
 
   _FlushCoordinator? _flush;
+  void Function(AllBoxPersistenceError error)? _onPersistenceError;
   bool _initialized = false;
 
   /// Whether [init] (or [memory]) has already completed for this container.
@@ -159,6 +203,12 @@ class AllBox {
   ///
   /// Calling [init] again for a container that is already initialized is a
   /// no-op; the container keeps whatever data it currently holds in memory.
+  ///
+  /// [validateContainerName] is opt-in for compatibility. When true on IO,
+  /// the built-in storage rejects names that can behave differently across
+  /// operating systems or be interpreted as paths (for example `../data`,
+  /// `a/b`, `cache:name`, `CON`, `NUL`). Existing applications that already
+  /// use such names can keep the default false and migrate deliberately.
   ///
   /// **PT-BR:** Inicializa [container], carregando seus dados para a
   /// memória, para que as leituras seguintes sejam síncronas, e retorna a
@@ -204,33 +254,98 @@ class AllBox {
     Duration flushDelay = defaultFlushDelay,
     Map<String, dynamic> initialData = const <String, dynamic>{},
     AllBoxStorage? storage,
+    void Function(AllBoxPersistenceError error)? onPersistenceError,
+    bool validateContainerName = false,
   }) async {
     final box = AllBox(container);
     if (box._initialized) return box;
 
-    final resolvedStorage = storage ??
-        AllBoxPlatformStorage.resolve(container: container, path: path);
-    final coordinator = _DebouncedFlushCoordinator(resolvedStorage, flushDelay);
-
-    final isFirstRun = !(await resolvedStorage.hasPersistedData());
-    final data = await resolvedStorage.load();
-
-    box._flush = coordinator;
-    if (isFirstRun && initialData.isNotEmpty) {
-      box._box
-        ..clear()
-        ..addAll(initialData);
-      box._initialized = true;
-      // Persist the seed right away so it isn't lost if the process dies
-      // before the first real write() would have flushed it.
-      await coordinator.flushNow(box._box);
-    } else {
-      box._box
-        ..clear()
-        ..addAll(data);
-      box._initialized = true;
+    final config = _InitializationConfig(
+      path: path,
+      flushDelay: flushDelay,
+      initialData: initialData,
+      storage: storage,
+      onPersistenceError: onPersistenceError,
+      validateContainerName: validateContainerName,
+    );
+    final pending = _pendingInitializations[container];
+    if (pending != null) {
+      if (pending.config == config) return pending.future;
+      throw StateError(
+        'AllBox("$container") is already being initialized with different '
+        'options. Concurrent init() calls for the same container must use '
+        'equivalent path, storage, initialData and flushDelay values.',
+      );
     }
-    return box;
+
+    late final Future<AllBox> future;
+    future = box
+        ._initialize(
+      path: path,
+      flushDelay: flushDelay,
+      initialData: initialData,
+      storage: storage,
+      onPersistenceError: onPersistenceError,
+      validateContainerName: validateContainerName,
+    )
+        .whenComplete(() {
+      if (identical(_pendingInitializations[container]?.future, future)) {
+        _pendingInitializations.remove(container);
+      }
+    });
+    _pendingInitializations[container] = _PendingInitialization(config, future);
+    return future;
+  }
+
+  Future<AllBox> _initialize({
+    required String? path,
+    required Duration flushDelay,
+    required Map<String, dynamic> initialData,
+    required AllBoxStorage? storage,
+    required void Function(AllBoxPersistenceError error)? onPersistenceError,
+    required bool validateContainerName,
+  }) async {
+    final resolvedStorage = storage ??
+        AllBoxPlatformStorage.resolve(
+          container: container,
+          path: path,
+          validateContainerName: validateContainerName,
+        );
+    _onPersistenceError = onPersistenceError;
+    final coordinator = _DebouncedFlushCoordinator(
+      resolvedStorage,
+      flushDelay,
+      onPersistenceError: _reportPersistenceError,
+    );
+
+    try {
+      final isFirstRun = !(await resolvedStorage.hasPersistedData());
+      final data = await resolvedStorage.load();
+
+      _flush = coordinator;
+      if (isFirstRun && initialData.isNotEmpty) {
+        _box
+          ..clear()
+          ..addAll(initialData);
+        // Persist the seed right away so it isn't lost if the process dies
+        // before the first real write() would have flushed it.
+        await coordinator.flushNow(_box, operation: 'init');
+      } else {
+        _box
+          ..clear()
+          ..addAll(data);
+      }
+      _initialized = true;
+      return this;
+    } on Object {
+      coordinator.disposeForTesting();
+      if (identical(_flush, coordinator)) {
+        _flush = null;
+      }
+      _box.clear();
+      _initialized = false;
+      rethrow;
+    }
   }
 
   /// Initializes [container] with a pure in-memory storage: no real disk
@@ -356,7 +471,7 @@ class AllBox {
     _warnIfNotSerializable('writeAndFlush', key, value);
     _box[key] = value;
     _debugPostMutationEvent('write', key: key);
-    await _flush!.flushNow(_box);
+    await _flush!.flushNow(_box, operation: 'writeAndFlush');
   }
 
   /// Like [write], but returns a [Future] that completes once the new value
@@ -404,7 +519,7 @@ class AllBox {
     _warnIfNotSerializable('writeAndSave', key, value);
     _box[key] = value;
     _debugPostMutationEvent('write', key: key);
-    await _flush!.flushNow(_box, fsync: false);
+    await _flush!.flushNow(_box, fsync: false, operation: 'writeAndSave');
   }
 
   /// Removes [key], if it was present.
@@ -440,7 +555,81 @@ class AllBox {
   /// caso o processo seja finalizado.
   Future<void> flushNow() async {
     _assertInitialized('flushNow');
-    await _flush!.flushNow(_box);
+    await _flush!.flushNow(_box, operation: 'flushNow');
+  }
+
+  void _reportPersistenceError(
+    String operation,
+    Object cause,
+    StackTrace stackTrace,
+    bool hasUnpersistedChanges,
+  ) {
+    final error = AllBoxPersistenceError(
+      container: container,
+      operation: operation,
+      cause: cause,
+      stackTrace: stackTrace,
+      hasUnpersistedChanges: hasUnpersistedChanges,
+    );
+    _onPersistenceError?.call(error);
+  }
+
+  /// Releases this container and removes it from the internal registry.
+  ///
+  /// When [flushPending] is true, any pending in-memory changes are flushed
+  /// before the underlying storage is closed. When false, pending debounced
+  /// writes are discarded.
+  Future<void> close({bool flushPending = true}) async {
+    final coordinator = _flush;
+    if (coordinator == null) {
+      _initialized = false;
+      if (identical(_instances[container], this)) {
+        _instances.remove(container);
+      }
+      return;
+    }
+
+    try {
+      await coordinator.close(_box, flushPending: flushPending);
+    } finally {
+      if (identical(_flush, coordinator)) {
+        _flush = null;
+      }
+      _box.clear();
+      _initialized = false;
+      if (identical(_instances[container], this)) {
+        _instances.remove(container);
+      }
+    }
+  }
+
+  /// Destroys this container's persisted data and releases its storage.
+  ///
+  /// This is a logical deletion API, not a secure wipe: storage media may
+  /// retain old bytes outside this package's control.
+  Future<void> destroy() async {
+    final coordinator = _flush;
+    if (coordinator == null) {
+      _box.clear();
+      _initialized = false;
+      if (identical(_instances[container], this)) {
+        _instances.remove(container);
+      }
+      return;
+    }
+
+    try {
+      await coordinator.destroy(_box);
+    } finally {
+      if (identical(_flush, coordinator)) {
+        _flush = null;
+      }
+      _box.clear();
+      _initialized = false;
+      if (identical(_instances[container], this)) {
+        _instances.remove(container);
+      }
+    }
   }
 
   void _assertInitialized(String method) {
@@ -591,6 +780,85 @@ class AllBox {
   }
 }
 
+class _PendingInitialization {
+  _PendingInitialization(this.config, this.future);
+
+  final _InitializationConfig config;
+  final Future<AllBox> future;
+}
+
+class _InitializationConfig {
+  _InitializationConfig({
+    required this.path,
+    required this.flushDelay,
+    required Map<String, dynamic> initialData,
+    required this.storage,
+    required this.onPersistenceError,
+    required this.validateContainerName,
+  }) : initialData = Map<String, dynamic>.of(initialData);
+
+  final String? path;
+  final Duration flushDelay;
+  final Map<String, dynamic> initialData;
+  final AllBoxStorage? storage;
+  final void Function(AllBoxPersistenceError error)? onPersistenceError;
+  final bool validateContainerName;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _InitializationConfig &&
+        path == other.path &&
+        flushDelay == other.flushDelay &&
+        identical(storage, other.storage) &&
+        identical(onPersistenceError, other.onPersistenceError) &&
+        validateContainerName == other.validateContainerName &&
+        _deepEquals(initialData, other.initialData);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        path,
+        flushDelay,
+        identityHashCode(storage),
+        identityHashCode(onPersistenceError),
+        validateContainerName,
+        _deepHash(initialData),
+      );
+}
+
+bool _deepEquals(Object? a, Object? b) {
+  if (identical(a, b)) return true;
+  if (a is Map && b is Map) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (!b.containsKey(entry.key)) return false;
+      if (!_deepEquals(entry.value, b[entry.key])) return false;
+    }
+    return true;
+  }
+  if (a is List && b is List) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!_deepEquals(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  return a == b;
+}
+
+int _deepHash(Object? value) {
+  if (value is Map) {
+    return Object.hashAllUnordered(
+      value.entries
+          .map((entry) => Object.hash(entry.key, _deepHash(entry.value))),
+    );
+  }
+  if (value is List) {
+    return Object.hashAll(value.map(_deepHash));
+  }
+  return value.hashCode;
+}
+
 /// Internal seam between [AllBox] and the debounce/coalescing strategy used
 /// to turn optimistic [AllBox.write] calls into calls against an
 /// [AllBoxStorage]. Not exported.
@@ -614,7 +882,16 @@ class AllBox {
 /// [AllBox.memory]: sem [Timer], toda escrita persiste de forma síncrona.
 abstract class _FlushCoordinator {
   void scheduleFlush(Map<String, dynamic> snapshot);
-  Future<void> flushNow(Map<String, dynamic> snapshot, {bool fsync});
+  Future<void> flushNow(
+    Map<String, dynamic> snapshot, {
+    bool fsync,
+    String operation,
+  });
+  Future<void> close(
+    Map<String, dynamic> snapshot, {
+    required bool flushPending,
+  });
+  Future<void> destroy(Map<String, dynamic> snapshot);
   void disposeForTesting();
   int get flushCallCountForTesting;
 }
@@ -632,13 +909,24 @@ abstract class _FlushCoordinator {
 /// debounce/coalescing/fila serializada em cada implementação de
 /// [AllBoxStorage].
 class _DebouncedFlushCoordinator implements _FlushCoordinator {
-  _DebouncedFlushCoordinator(this._storage, this.flushDelay);
+  _DebouncedFlushCoordinator(
+    this._storage,
+    this.flushDelay, {
+    required this.onPersistenceError,
+  });
 
   final AllBoxStorage _storage;
   final Duration flushDelay;
+  final void Function(
+    String operation,
+    Object cause,
+    StackTrace stackTrace,
+    bool hasUnpersistedChanges,
+  ) onPersistenceError;
 
   Timer? _debounceTimer;
   bool _dirty = false;
+  bool _closed = false;
 
   /// Number of times a flush actually ran against [_storage]. Only
   /// incremented for tests — counting real flushes this way is
@@ -696,6 +984,7 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
   /// `writeAndFlush` entre dez `writeAndSave` faz o flush compartilhado
   /// usar [AllBoxPersistMode.flush].
   AllBoxPersistMode _pendingMode = AllBoxPersistMode.save;
+  String _pendingOperation = 'flushNow';
 
   /// Schedules a coalesced flush: the first write of a burst arms a single
   /// [Timer]; every subsequent write within [flushDelay] just marks the
@@ -708,6 +997,7 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
   /// burst continua produzindo exatamente um flush.
   @override
   void scheduleFlush(Map<String, dynamic> snapshot) {
+    if (_closed) return;
     _dirty = true;
     if (_debounceTimer?.isActive ?? false) {
       // A timer armed by an earlier write in this burst already covers this
@@ -725,6 +1015,7 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
         _enqueueFlush(
           Map<String, dynamic>.of(snapshot),
           mode: AllBoxPersistMode.flush,
+          operation: 'write',
         ).catchError((Object error, StackTrace stackTrace) {
           allBoxDebugLog(
             'AllBox: debounced flush failed and was dropped: $error',
@@ -741,18 +1032,27 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
   /// [snapshot] imediatamente, ainda passando pela fila de flush
   /// serializada.
   @override
-  Future<void> flushNow(Map<String, dynamic> snapshot, {bool fsync = true}) {
+  Future<void> flushNow(
+    Map<String, dynamic> snapshot, {
+    bool fsync = true,
+    String operation = 'flushNow',
+  }) {
+    if (_closed) {
+      throw StateError('AllBox storage coordinator is closed.');
+    }
     _debounceTimer?.cancel();
     _dirty = false;
     return _enqueueFlush(
       Map<String, dynamic>.of(snapshot),
       mode: fsync ? AllBoxPersistMode.flush : AllBoxPersistMode.save,
+      operation: operation,
     );
   }
 
   Future<void> _enqueueFlush(
     Map<String, dynamic> snapshot, {
     required AllBoxPersistMode mode,
+    required String operation,
   }) {
     // Coalescing: if a flush is already queued (waiting behind the one
     // in-flight), don't queue another full write of a nearly identical
@@ -760,14 +1060,17 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
     if (_pendingFlush != null) {
       _pendingSnapshot = snapshot;
       _pendingMode = _strongerMode(_pendingMode, mode);
+      _pendingOperation = _mergeOperation(_pendingOperation, operation);
       return _pendingFlush!;
     }
 
     _pendingSnapshot = snapshot;
     _pendingMode = mode;
+    _pendingOperation = operation;
     final scheduled = _flushChain.then((_) {
       final latest = _pendingSnapshot!;
       final latestMode = _pendingMode;
+      final latestOperation = _pendingOperation;
       // Clear *before* the flush starts: callers arriving while it's
       // running must start a new queued flush (their data is not in
       // `latest`), whereas callers arriving before it starts were free to
@@ -775,7 +1078,8 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
       _pendingSnapshot = null;
       _pendingFlush = null;
       _pendingMode = AllBoxPersistMode.save;
-      return _persist(latest, latestMode);
+      _pendingOperation = 'flushNow';
+      return _persist(latest, latestMode, latestOperation);
     });
     _pendingFlush = scheduled;
     // Keep the chain alive even if this flush fails, so later flushes still
@@ -784,12 +1088,46 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
     return scheduled;
   }
 
+  @override
+  Future<void> close(
+    Map<String, dynamic> snapshot, {
+    required bool flushPending,
+  }) async {
+    if (_closed) return;
+    if (flushPending) {
+      await flushNow(snapshot);
+    } else {
+      _debounceTimer?.cancel();
+      _dirty = false;
+    }
+    await _flushChain.catchError((_) {});
+    _closed = true;
+    await _storage.close();
+  }
+
+  @override
+  Future<void> destroy(Map<String, dynamic> snapshot) async {
+    if (_closed) return;
+    _debounceTimer?.cancel();
+    _dirty = false;
+    await _flushChain.catchError((_) {});
+    _closed = true;
+    await _storage.delete();
+    await _storage.close();
+  }
+
   Future<void> _persist(
     Map<String, dynamic> snapshot,
     AllBoxPersistMode mode,
+    String operation,
   ) async {
     flushCallCountForTesting++;
-    await _storage.save(snapshot, mode: mode);
+    try {
+      await _storage.save(snapshot, mode: mode);
+    } on Object catch (error, stackTrace) {
+      onPersistenceError(operation, error, stackTrace, true);
+      rethrow;
+    }
   }
 
   static AllBoxPersistMode _strongerMode(
@@ -805,6 +1143,17 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
   void disposeForTesting() {
     _debounceTimer?.cancel();
   }
+
+  static String _mergeOperation(String current, String next) {
+    if (current == next) return current;
+    if (next == 'writeAndFlush' || current == 'writeAndFlush') {
+      return 'writeAndFlush';
+    }
+    if (next == 'writeAndSave' || current == 'writeAndSave') {
+      return 'writeAndSave';
+    }
+    return next;
+  }
 }
 
 /// Persists every flush immediately against [_storage], with no [Timer] and
@@ -817,12 +1166,14 @@ class _ImmediateFlushCoordinator implements _FlushCoordinator {
   _ImmediateFlushCoordinator(this._storage);
 
   final AllBoxStorage _storage;
+  bool _closed = false;
 
   @override
   int flushCallCountForTesting = 0;
 
   @override
   void scheduleFlush(Map<String, dynamic> snapshot) {
+    if (_closed) return;
     flushCallCountForTesting++;
     // AllBoxMemoryStorage.save() has no `await` in its body, so it runs
     // fully synchronously up to completion even though it isn't awaited
@@ -836,13 +1187,40 @@ class _ImmediateFlushCoordinator implements _FlushCoordinator {
   }
 
   @override
-  Future<void> flushNow(Map<String, dynamic> snapshot,
-      {bool fsync = true}) async {
+  Future<void> flushNow(
+    Map<String, dynamic> snapshot, {
+    bool fsync = true,
+    String operation = 'flushNow',
+  }) async {
+    if (_closed) {
+      throw StateError('AllBox storage coordinator is closed.');
+    }
     flushCallCountForTesting++;
     await _storage.save(
       Map<String, dynamic>.of(snapshot),
       mode: fsync ? AllBoxPersistMode.flush : AllBoxPersistMode.save,
     );
+  }
+
+  @override
+  Future<void> close(
+    Map<String, dynamic> snapshot, {
+    required bool flushPending,
+  }) async {
+    if (_closed) return;
+    if (flushPending) {
+      await flushNow(snapshot);
+    }
+    _closed = true;
+    await _storage.close();
+  }
+
+  @override
+  Future<void> destroy(Map<String, dynamic> snapshot) async {
+    if (_closed) return;
+    _closed = true;
+    await _storage.delete();
+    await _storage.close();
   }
 
   @override

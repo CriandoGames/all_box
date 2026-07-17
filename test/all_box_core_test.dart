@@ -11,6 +11,7 @@
 // ignore_for_file: deprecated_member_use_from_same_package
 
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -92,6 +93,40 @@ void main() {
       final box = AllBox(container);
 
       expect(box.read<String>('greeting'), 'from backup');
+    });
+
+    test('logs a debug diagnostic when db and bak are both corrupted',
+        () async {
+      const container = 'corrupted_with_diagnostic';
+      final dir = await _tempDir(container);
+      final logs = <String>[];
+
+      await File('${dir.path}/$container.db')
+          .writeAsBytes(<int>[0xFF, 0x00, 0xDE, 0xAD]);
+      await File('${dir.path}/$container.bak').writeAsString('{ broken json');
+
+      await runZoned(
+        () => AllBox.init(
+          container,
+          path: dir.path,
+          initialData: const {'seed': 'must-not-mask-corruption'},
+        ),
+        zoneSpecification: ZoneSpecification(
+          print: (_, __, ___, message) => logs.add(message),
+        ),
+      );
+
+      final box = AllBox(container);
+      expect(box.getKeys(), isEmpty);
+      expect(
+        logs.join('\n'),
+        allOf(
+          contains('AllBox("$container")'),
+          contains('corrupted or unreadable'),
+          contains('$container.db'),
+          contains('$container.bak'),
+        ),
+      );
     });
   });
 

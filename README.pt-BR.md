@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/testes-77-brightgreen" alt="77 testes">
+  <img src="https://img.shields.io/badge/testes-114-brightgreen" alt="114 testes">
 </p>
 
 <p align="center">
@@ -46,6 +46,11 @@
   surpresas de resolução de plugin/Activity.
 - ⚡ **Escrita otimista + debounced**, com níveis opcionais de durabilidade
   mais forte (`writeAndSave()`, `writeAndFlush()`) quando você precisar.
+- 🧭 **Falhas de persistência observáveis.** O `write()` continua síncrono,
+  mas você pode usar `onPersistenceError` para registrar/reportar falhas de
+  persistência assíncrona.
+- 🧹 **APIs explícitas de ciclo de vida.** Use `close()` para liberar um
+  container e `destroy()` para remover seus dados persistidos.
 - 🧪 **Storage em memória para testes.** `AllBox.memory()` — sem I/O real,
   sem `Timer` real.
 - 🌐 **Suporte a Web**, apoiado em `window.localStorage`.
@@ -60,7 +65,7 @@ dart pub add all_box
 
 ```yaml
 dependencies:
-  all_box: ^0.4.0
+  all_box: ^0.7.0
 ```
 
 O `all_box` é Dart puro e tem um único ponto de entrada:
@@ -121,6 +126,22 @@ resolve isso por você). Também existe um argumento avançado `storage:`
 para conectar sua própria implementação de `AllBoxStorage`, mas o código
 do dia a dia nunca precisa dele.
 
+Nomes de container continuam permissivos por padrão por compatibilidade.
+Se você quiser validar nomes no IO antes de qualquer acesso a arquivo,
+habilite explicitamente:
+
+```dart
+await AllBox.init(
+  'settings',
+  path: dir.path,
+  validateContainerName: true,
+);
+```
+
+A validação estrita aceita apenas letras, números, `.`, `_` e `-`, e rejeita
+nomes que parecem caminhos ou nomes reservados do sistema operacional, como
+`../data`, `a/b`, `cache:name`, `CON` e `NUL`.
+
 ### Semeando dados no primeiro run
 
 ```dart
@@ -151,6 +172,43 @@ box.erase(); // limpa tudo
 
 await box.flushNow(); // força um flush agora, ex.: em AppLifecycleState.paused
 ```
+
+### Erros de persistência
+
+O `write()` continua síncrono de propósito: ele atualiza a memória e agenda
+um flush com debounce. Se essa persistência posterior falhar, você pode
+observar o erro sem transformar o `all_box` numa biblioteca de estado
+reativo:
+
+```dart
+final box = await AllBox.init(
+  'settings',
+  path: dir.path,
+  onPersistenceError: (AllBoxPersistenceError error) {
+    // registre/reporte error.container, error.operation, error.cause
+  },
+);
+
+box.write('theme', 'dark');
+```
+
+`writeAndSave()`, `writeAndFlush()` e `flushNow()` continuam completando com
+erro quando a persistência aguardada falha. A mesma falha também é reportada
+via `onPersistenceError`.
+
+### Liberando ou destruindo um container
+
+```dart
+await box.close(); // grava pendências, fecha o storage e remove do registro
+
+await box.close(flushPending: false); // descarta writes debounced pendentes
+
+await box.destroy(); // apaga dados persistidos, fecha o storage e remove
+```
+
+`destroy()` é uma API de exclusão lógica. Ela remove os arquivos `.db`,
+`.tmp` e `.bak` no IO, ou a chave de storage na Web, mas não é um secure
+wipe e não promete sobrescrever fisicamente o armazenamento.
 
 ### Valor com fallback seguro
 
@@ -297,7 +355,7 @@ com queries, índices ou relações (veja
 | Member | Descrição |
 | --- | --- |
 | `AllBox([container])` | Factory constructor; retorna um singleton por nome de container. |
-| `static AllBox.init(container, {path, flushDelay, initialData, storage})` | Carrega o `container` para a memória e retorna o `AllBox` inicializado. `path` é obrigatório em plataformas IO, ignorado na Web. |
+| `static AllBox.init(container, {path, flushDelay, initialData, storage, onPersistenceError, validateContainerName})` | Carrega o `container` para a memória e retorna o `AllBox` inicializado. `path` é obrigatório em plataformas IO, ignorado na Web. Validação de nome é opt-in por compatibilidade. |
 | `static AllBox.memory(container, {initialData})` | Forma recomendada de testar código que consome o `all_box`: sem I/O real, sem `Timer` real. Substitui o descontinuado `initWithMemoryBackendForTesting`. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Leituras síncronas. |
 | `void write(key, value)` | Escrita otimista + debounced. |
@@ -305,6 +363,8 @@ com queries, índices ou relações (veja
 | `Future<void> writeAndFlush(key, value)` | Escreve e espera a garantia de durabilidade mais forte disponível. |
 | `void remove(key)` / `void erase()` | Remove uma chave / limpa tudo. |
 | `Future<void> flushNow()` | Força um flush imediato, ignorando a janela de debounce. |
+| `Future<void> close({flushPending})` | Grava ou descarta writes pendentes, fecha o backend de storage e remove o container do registro interno. |
+| `Future<void> destroy()` | Apaga os dados persistidos do container, fecha o storage e remove do registro. Não é secure wipe. |
 | `hasData(key)`, `getKeys()`, `getValues()` | Introspecção. |
 
 ## 🛠️ Como funciona
@@ -314,6 +374,17 @@ O `all_box` segue uma lista curta de decisões de design deliberadas:
 - **`path` sempre explícito no IO, automático na Web.** Sem resolução
   interna de diretório, sem dependência de plugin.
 - **`initialData` só se aplica num first-run de verdade.**
+- **`init()` é determinístico sob concorrência.** Chamadas concorrentes
+  equivalentes compartilham uma inicialização; opções conflitantes são
+  rejeitadas.
+- **Validação de nome de container é opt-in.** Apps existentes mantêm seus
+  nomes por padrão; o modo estrito fica disponível via
+  `validateContainerName`.
+- **Falhas de persistência são observáveis.** `onPersistenceError` reporta
+  falhas assíncronas do flush debounced sem tornar `write()` assíncrono.
+- **Web atualmente é apenas Window/localStorage.** Web Workers, Service
+  Workers, escritas multiaba seguras e IndexedDB são trabalho futuro de
+  backend, não promessas do backend atual baseado em localStorage.
 - **Sem reatividade embutida** — veja
   [Precisa de reatividade?](#-precisa-de-reatividade).
 

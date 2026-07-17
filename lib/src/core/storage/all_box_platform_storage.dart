@@ -50,7 +50,15 @@ class AllBoxPlatformStorage {
   ///
   /// **PT-BR:** Resolve o [AllBoxStorage] a usar para [container], dado o
   /// `path` (se houver) passado para `AllBox.init`.
-  static AllBoxStorage resolve({required String container, String? path}) {
-    return target.createPlatformStorage(container: container, path: path);
+  static AllBoxStorage resolve({
+    required String container,
+    String? path,
+    bool validateContainerName = false,
+  }) {
+    return target.createPlatformStorage(
+      container: container,
+      path: path,
+      validateContainerName: validateContainerName,
+    );
   }
 }

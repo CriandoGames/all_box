@@ -13,6 +13,7 @@ const bool isWebSupported = false;
 AllBoxStorage createPlatformStorage({
   required String container,
   String? path,
+  bool validateContainerName = false,
 }) {
   return const AllBoxUnsupportedStorage();
 }

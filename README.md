@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/tests-77-brightgreen" alt="77 tests">
+  <img src="https://img.shields.io/badge/tests-114-brightgreen" alt="114 tests">
 </p>
 
 <p align="center">
@@ -45,6 +45,11 @@
   plugin/Activity resolution surprises.
 - ⚡ **Optimistic, debounced writes**, with opt-in stronger durability
   tiers (`writeAndSave()`, `writeAndFlush()`) when you need them.
+- 🧭 **Observable persistence failures.** Keep `write()` synchronous, but
+  opt into `onPersistenceError` when you need to log/report failed async
+  persistence.
+- 🧹 **Explicit lifecycle APIs.** Use `close()` to release a container and
+  `destroy()` to remove its persisted data.
 - 🧪 **In-memory storage for testing.** `AllBox.memory()` — no real I/O,
   no real `Timer`.
 - 🌐 **Web support**, backed by `window.localStorage`.
@@ -64,7 +69,7 @@ dart pub add all_box
 
 ```yaml
 dependencies:
-  all_box: ^0.4.0
+  all_box: ^0.7.0
 ```
 
 `all_box` is pure Dart and has a single entrypoint:
@@ -125,6 +130,21 @@ resolves it for you). There's also an advanced `storage:` argument to plug
 in your own `AllBoxStorage` implementation, but everyday code never needs
 it.
 
+Container names remain permissive by default for compatibility. If you want
+IO container names to be checked before any file access, opt in:
+
+```dart
+await AllBox.init(
+  'settings',
+  path: dir.path,
+  validateContainerName: true,
+);
+```
+
+Strict validation accepts only letters, numbers, `.`, `_` and `-`, and
+rejects path-like or OS-reserved names such as `../data`, `a/b`,
+`cache:name`, `CON` and `NUL`.
+
 ### Seeding data on first run
 
 ```dart
@@ -155,6 +175,42 @@ box.erase(); // clears everything
 
 await box.flushNow(); // forces a flush now, e.g. on AppLifecycleState.paused
 ```
+
+### Persistence errors
+
+`write()` intentionally stays synchronous: it updates memory and schedules a
+debounced flush. If that later persistence step fails, you can observe it
+without turning `all_box` into a reactive state library:
+
+```dart
+final box = await AllBox.init(
+  'settings',
+  path: dir.path,
+  onPersistenceError: (AllBoxPersistenceError error) {
+    // log/report error.container, error.operation, error.cause
+  },
+);
+
+box.write('theme', 'dark');
+```
+
+`writeAndSave()`, `writeAndFlush()` and `flushNow()` still complete with an
+error when their awaited persistence fails. The same failure is also reported
+through `onPersistenceError`.
+
+### Releasing or destroying a container
+
+```dart
+await box.close(); // flushes pending data, closes storage, unregisters it
+
+await box.close(flushPending: false); // discards pending debounced writes
+
+await box.destroy(); // deletes persisted data, closes storage, unregisters it
+```
+
+`destroy()` is a logical deletion API. It removes AllBox's `.db`, `.tmp` and
+`.bak` files on IO, or the Web storage key on Web, but it is not a secure
+wipe and does not claim to overwrite physical storage.
 
 ### Value with a safe fallback
 
@@ -298,7 +354,7 @@ full embedded database with queries, indexes or relations (see
 | Member | Description |
 | --- | --- |
 | `AllBox([container])` | Factory constructor; returns a singleton per container name. |
-| `static AllBox.init(container, {path, flushDelay, initialData, storage})` | Loads `container` into memory and returns the initialized `AllBox`. `path` is required on IO platforms, ignored on Web. |
+| `static AllBox.init(container, {path, flushDelay, initialData, storage, onPersistenceError, validateContainerName})` | Loads `container` into memory and returns the initialized `AllBox`. `path` is required on IO platforms, ignored on Web. Container-name validation is opt-in for compatibility. |
 | `static AllBox.memory(container, {initialData})` | Recommended way to test code that consumes `all_box`: no real I/O, no real `Timer`. Replaces the deprecated `initWithMemoryBackendForTesting`. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Synchronous reads. |
 | `void write(key, value)` | Optimistic, debounced write. |
@@ -306,6 +362,8 @@ full embedded database with queries, indexes or relations (see
 | `Future<void> writeAndFlush(key, value)` | Writes and waits for the strongest durability guarantee available. |
 | `void remove(key)` / `void erase()` | Removes a key / clears everything. |
 | `Future<void> flushNow()` | Forces an immediate flush, bypassing the debounce window. |
+| `Future<void> close({flushPending})` | Flushes or discards pending writes, closes the backend storage and removes the container from the internal registry. |
+| `Future<void> destroy()` | Deletes persisted data for the container, closes storage and removes the container from the registry. Not a secure wipe. |
 | `hasData(key)`, `getKeys()`, `getValues()` | Introspection. |
 
 ## 🛠️ How it works
@@ -315,6 +373,15 @@ full embedded database with queries, indexes or relations (see
 - **`path` is always explicit on IO, automatic on Web.** No internal
   directory resolution, no plugin dependency.
 - **`initialData` only ever applies on a genuine first run.**
+- **`init()` is deterministic under concurrency.** Equivalent concurrent
+  calls share one initialization; conflicting options are rejected.
+- **Container-name validation is opt-in.** Existing apps keep their current
+  names by default; strict mode is available through `validateContainerName`.
+- **Persistence failures are observable.** `onPersistenceError` reports
+  async debounced failures without changing `write()` into an async API.
+- **Web is currently Window/localStorage only.** Web Workers, Service
+  Workers, safe multi-tab writes, and IndexedDB are future backend work, not
+  promises of the current localStorage backend.
 - **No built-in reactivity** — see [Need reactivity?](#-need-reactivity).
 
 The write-ahead + atomic-rename pipeline, flush/debounce coordination, the
@@ -409,4 +476,3 @@ started.
 
 Issues and pull requests are welcome at the
 [GitHub repository](https://github.com/CriandoGames/all_box). Distributed under the [MIT](LICENSE) license.
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 

@@ -21,6 +21,7 @@ export 'src/core/all_box_impl.dart'
         AllBoxStorage,
         AllBoxPersistMode,
         AllBoxStorageException,
+        AllBoxPersistenceError,
         AllBoxInspector,
         AllBoxContainerSnapshot,
         AllBoxBackendKind;

@@ -28,6 +28,14 @@ Na leitura, erros de decodificação UTF-8 e erros de `jsonDecode` são
 tratados como estágios de falha distintos. Cada estágio cai para o `.bak`
 antes de desistir e começar com um container vazio.
 
+Se arquivos `.db`/`.bak` existem mas nenhum deles pode ser decodificado, o
+backend IO emite um diagnóstico somente em debug e começa com um container
+vazio em memória. Os arquivos corrompidos não são apagados durante o
+`init()`; eles continuam disponíveis para inspeção manual até que uma
+persistência posterior bem-sucedida os substitua pelo pipeline normal de
+write-ahead. Isso mantém a corrupção visível em builds debug sem adicionar
+outra API pública de recuperação.
+
 ### Portabilidade do `File.rename`
 
 A troca atômica depende da semântica de `File.rename`. Em POSIX
@@ -70,6 +78,14 @@ A primeira escrita de um burst arma um único `Timer` de debounce
 janela só marca o container como sujo e pega carona no timer já armado —
 um burst continua produzindo exatamente um flush.
 
+Falhas de flush são reportadas por `onPersistenceError` quando o usuário
+fornece esse callback em `AllBox.init()`. Isso importa principalmente para
+`write()` com debounce, porque não existe um `Future` retornado onde o erro
+possa aparecer. APIs aguardadas (`writeAndSave()`, `writeAndFlush()`,
+`flushNow()`) continuam relançando a falha do storage pelo `Future`
+retornado; o callback é um gancho adicional de reporte, não um substituto
+para erros normais de `Future`.
+
 ## Semântica do `initialData`
 
 O `initialData` passado para `AllBox.init()` só é aplicado em um first-run
@@ -80,6 +96,52 @@ então um container esvaziado por um `erase()` anterior ainda conta como
 aplica, o seed é persistido imediatamente (ignorando a janela de
 debounce), então sobrevive a um crash logo após o primeiro lançamento do
 app.
+
+A inicialização é serializada por container. Chamadas concorrentes com
+opções equivalentes compartilham o mesmo `Future` de inicialização em
+andamento. Chamadas concorrentes com `path`, `storage`, `initialData`,
+`flushDelay`, `onPersistenceError` ou `validateContainerName` conflitantes
+são rejeitadas com `StateError`, em vez de deixar uma configuração vencer
+de forma não determinística.
+
+Quando o seed de first-run falha ao persistir, a inicialização faz rollback:
+o container fica não inicializado, os dados em memória são limpos e uma
+chamada posterior de `init()` pode tentar novamente a partir de um estado
+limpo.
+
+## Ciclo de vida e exclusão
+
+`close({flushPending})` fecha um container e remove seu singleton do
+registro interno. Com o padrão `flushPending: true`, dados pendentes em
+memória são persistidos antes de fechar o backend de storage. Com
+`flushPending: false`, writes debounced pendentes são descartados.
+
+`destroy()` cancela trabalho pendente de debounce, apaga os dados
+persistidos pelo backend, fecha o backend de storage e remove o singleton
+do registro. No IO, o backend apaga `.db`, `.tmp` e `.bak`; na Web, remove a
+chave do browser storage. Isso é exclusão lógica, não sobrescrita física
+segura.
+
+## Nomes de container no IO
+
+Por compatibilidade, nomes de container continuam permissivos por padrão.
+Apps existentes que usam nomes como `user/cache` continuam funcionando.
+
+Quando `validateContainerName: true` é passado para `AllBox.init()` no IO, o
+storage IO embutido valida o nome antes de qualquer acesso a arquivo. O
+modo estrito aceita apenas letras, números, `.`, `_` e `-`, e rejeita nomes
+vazios, `.`/`..`, separadores de caminho, separadores de drive, pontos ou
+espaços finais, e nomes reservados do Windows como `CON`, `NUL`, `COM1` e
+`LPT1`. Esse modo opt-in é útil para apps que querem uma política única de
+filename entre plataformas e nenhum nome de container com aparência de
+caminho.
+
+## Snapshots do inspector
+
+`AllBoxInspector.snapshot()` e `snapshotOf()` retornam retratos de um ponto
+no tempo. As entradas do snapshot são copiadas profundamente e ficam
+imutáveis para maps e listas, então mutar um valor depois que o snapshot foi
+criado não altera o retrato já entregue para ferramentas.
 
 ## Aviso de serialização em debug
 
@@ -111,6 +173,44 @@ qualquer plataforma.
 equivalente a `fsync`, já que uma chamada `localStorage.setItem` já é
 síncrona.
 
+O backend Web embutido atual é um backend **somente para Window**. Ele é
+ligado a `window.localStorage`, que a MDN documenta como uma propriedade de
+`Window`, e a Web Storage API é exposta por `Window.localStorage`/
+`Window.sessionStorage`. Ele não é anunciado como backend para Web Worker ou
+Service Worker. Um backend futuro compatível com workers deve usar outro
+contrato de storage, provavelmente IndexedDB, em vez de fingir que
+`localStorage` funciona em todos os contextos.
+
+Como o backend Web grava um snapshot JSON completo por container, ele não
+sincroniza escritores concorrentes entre múltiplas abas do navegador. O
+registro singleton protege apenas uma janela/isolate Dart. Duas abas
+escrevendo a partir de snapshots antigos ainda podem perder dados. Esta é
+uma limitação arquitetural documentada até existir um protocolo de
+revisão/conflito e um backend adequado para coordenação entre contextos.
+
+## Benchmarks
+
+`tool/web_storage_benchmark.dart` fornece um relatório leve de benchmark
+para o caminho puro em Dart do `AllBoxWebStorage`, usando um browser storage
+síncrono falso. Ele cobre 100/1.000/5.000 chaves, valores de 100 KB/500 KB/1
+MB, burst de escritas e múltiplos containers:
+
+```bash
+dart run tool/web_storage_benchmark.dart
+```
+
+`test/web/all_box_web_storage_browser_benchmark_test.dart` complementa isso
+com um relatório opcional em navegador real contra `window.localStorage`:
+
+```bash
+dart test -p chrome test/web/all_box_web_storage_browser_benchmark_test.dart --reporter expanded
+```
+
+Os dois comandos imprimem medições como relatórios comparativos locais, sem
+impor limites dependentes da máquina. Use execuções repetidas no mesmo
+ambiente/navegador antes de fazer afirmações de desempenho sobre bloqueio de
+`window.localStorage`.
+
 ## Limitações conhecidas
 
 - **O storage Web (`localStorage`) tem limites reais.** Não há um
@@ -123,6 +223,11 @@ síncrona.
   lança uma `AllBoxStorageException`. Os dados não são criptografados: não
   guarde segredos ou dados sensíveis num container Web sem criptografá-los
   você mesmo antes. Não recomendado para grandes volumes de dados.
+- **O backend Web embutido é somente Window e não é seguro para multiaba.**
+  Ele usa `window.localStorage` e mantém sincronização apenas dentro da
+  janela/isolate Dart atual. Web Workers, Service Workers e escritas
+  multiaba seguras exigem outro backend/contrato, como um desenho futuro
+  baseado em IndexedDB.
 - **Não é isolate-safe.** Cada `AllBox` mantém seu estado em memória no
   isolate onde foi inicializado; não há sincronização entre isolates. Se
   você usa múltiplos isolates (ex.: `compute()`, isolates de background),

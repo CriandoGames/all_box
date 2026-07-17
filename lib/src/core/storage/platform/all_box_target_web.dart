@@ -62,6 +62,7 @@ class _LocalStorageBrowserStorage implements AllBoxBrowserStorage {
 AllBoxStorage createPlatformStorage({
   required String container,
   String? path,
+  bool validateContainerName = false,
 }) {
   return AllBoxWebStorage(
     container: container,

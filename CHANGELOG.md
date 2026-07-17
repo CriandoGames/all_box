@@ -1,3 +1,49 @@
+## 0.7.0
+
+Reliability and release-infrastructure hardening, with a deliberately small
+public API surface.
+
+- **New lifecycle APIs:** `AllBox.close()` flushes pending data, releases the
+  storage backend and unregisters the container instance; `AllBox.destroy()`
+  closes the box and removes the persisted data for logout/reset scenarios.
+- **New persistence-error reporting:** `AllBox.init(..., onPersistenceError:
+  ...)` reports async persistence failures from debounced `write()` calls,
+  preserving the existing synchronous write ergonomics while making dropped
+  disk/Web writes observable by logging/telemetry code.
+- **New optional container-name validation:** `validateContainerName: true`
+  rejects unsafe/non-portable container names. It remains opt-in to avoid
+  breaking existing users that already persist names such as `user/cache` or
+  `cache:name`.
+- **Improved corruption diagnostics:** when both `<container>.db` and
+  `<container>.bak` exist but are unreadable/corrupted, debug builds now log
+  a diagnostic that names both files and explains that the in-memory
+  container started empty. `init()` still does not throw on corrupted data.
+- **Inspector snapshots are safer:** `AllBoxInspector` now deep-freezes nested
+  `Map`/`List` values in snapshots, so later mutations of stored values cannot
+  mutate an already-created snapshot.
+- **Serialization regression coverage:** IO-backed non-JSON-encodable values
+  are covered for debounced `write()`, `writeAndSave()` and
+  `writeAndFlush()`. No `strictSerialization` public API was added.
+- **CI added:** GitHub Actions now runs formatting, analysis and VM tests
+  across Linux/Windows/macOS on Dart `stable` and the package's minimum SDK
+  (`3.3.0`, via `pub downgrade`), plus Chrome Web storage tests and a
+  `dart2wasm` compile smoke test.
+- **Web benchmark tooling:** added a VM/fake-storage benchmark
+  (`tool/web_storage_benchmark.dart`) and an optional real-Chrome
+  `window.localStorage` benchmark
+  (`test/web/all_box_web_storage_browser_benchmark_test.dart`).
+- **Documentation:** README and architecture docs now document lifecycle,
+  persistence-error handling, safe container names, corruption diagnostics,
+  Web/localStorage limitations, multi-tab limitations and benchmark commands.
+- **Compatibility note:** the built-in Web backend is still
+  `window.localStorage`; IndexedDB, Workers/Service Workers and safe multi-tab
+  writes remain future backend work, not promises of this release.
+- **Breaking for custom storage implementers only:** `AllBoxStorage` now
+  includes `close()`. Apps using the built-in IO/Web/memory storage do not
+  need any migration, but custom `AllBoxStorage` implementations must add a
+  `Future<void> close()` method. A no-op implementation is fine when there
+  are no resources to release.
+
 ## 0.6.0
 
 Adds debug-only push notifications for external tooling, as a follow-up

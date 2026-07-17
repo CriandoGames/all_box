@@ -10,6 +10,7 @@
 /// um `path` ausente no IO, uma falha ao codificar JSON, ou uma falha no
 /// storage do navegador (indisponível, quota excedida, etc).
 class AllBoxStorageException implements Exception {
+  /// Creates an exception with an actionable [message] and optional cause.
   AllBoxStorageException(this.message, {this.cause, this.stackTrace});
 
   /// A human-readable, actionable description of what went wrong.

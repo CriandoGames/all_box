@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  vm:
+    name: Dart ${{ matrix.sdk }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        sdk:
+          - "3.3.0"
+          - stable
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ matrix.sdk }}
+      - run: dart --version
+      - if: matrix.sdk != '3.3.0'
+        run: dart pub get
+      - if: matrix.sdk == '3.3.0'
+        run: dart pub downgrade
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: dart analyze
+      - run: dart test --reporter expanded
+
+  web:
+    name: Web checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+      - run: dart test -p chrome test/web/all_box_web_storage_browser_test.dart --reporter expanded
+      - run: dart compile wasm tool/wasm_compile_smoke.dart -o build/wasm_compile_smoke/wasm_compile_smoke.wasm

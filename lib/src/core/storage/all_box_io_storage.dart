@@ -34,8 +34,15 @@ import 'all_box_storage_exception.dart';
 /// desta classe — isso vive no coordenador de flush interno do `AllBox`,
 /// compartilhado por toda implementação de [AllBoxStorage].
 class AllBoxIoStorage implements AllBoxStorage {
-  AllBoxIoStorage({required this.container, required String directoryPath})
-      : _directory = Directory(directoryPath);
+  AllBoxIoStorage({
+    required this.container,
+    required String directoryPath,
+    bool validateContainerName = false,
+  }) : _directory = Directory(directoryPath) {
+    if (validateContainerName) {
+      _validateContainerName(container);
+    }
+  }
 
   final String container;
   final Directory _directory;
@@ -69,6 +76,14 @@ class AllBoxIoStorage implements AllBoxStorage {
     // Neither the main file nor the backup could be read (missing, binary
     // garbage, truncated JSON, ...): start with an empty container rather
     // than crashing the app.
+    if (_dbFile.existsSync() || _bakFile.existsSync()) {
+      _debugLog(
+        'AllBox("$container"): persisted data is corrupted or unreadable. '
+        'Tried "${_dbFile.path}" and "${_bakFile.path}" and started with an '
+        'empty in-memory container. Existing corrupted files were left in '
+        'place until the next successful save.',
+      );
+    }
     return <String, dynamic>{};
   }
 
@@ -169,4 +184,40 @@ class AllBoxIoStorage implements AllBoxStorage {
 
   @override
   Future<void> close() async {}
+
+  void _debugLog(Object message) {
+    assert(() {
+      // ignore: avoid_print
+      print(message);
+      return true;
+    }());
+  }
+
+  static void _validateContainerName(String container) {
+    final reservedWindowsNames = <String>{
+      'CON',
+      'PRN',
+      'AUX',
+      'NUL',
+      for (var i = 1; i <= 9; i++) ...<String>{'COM$i', 'LPT$i'},
+    };
+    final baseName = container.split('.').first.toUpperCase();
+    final validPattern = RegExp(r'^[A-Za-z0-9._-]+$');
+
+    if (container.isEmpty ||
+        container == '.' ||
+        container == '..' ||
+        container.endsWith('.') ||
+        container.endsWith(' ') ||
+        !validPattern.hasMatch(container) ||
+        reservedWindowsNames.contains(baseName)) {
+      throw ArgumentError.value(
+        container,
+        'container',
+        'Invalid AllBox container name. Use only letters, numbers, ".", "_" '
+            'or "-", do not use "."/"..", path separators, drive separators '
+            'or Windows reserved device names.',
+      );
+    }
+  }
 }

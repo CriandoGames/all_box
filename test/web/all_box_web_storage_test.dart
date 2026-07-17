@@ -109,7 +109,8 @@ void main() {
       expect(loaded, {'darkMode': true, 'name': 'Carlos'});
     });
 
-    test('save and flush modes are both accepted and round-trip the same '
+    test(
+        'save and flush modes are both accepted and round-trip the same '
         'way (no meaningful distinction on Web)', () async {
       final browser = _FakeBrowserStorage();
       final storage = AllBoxWebStorage(container: 'c', browserStorage: browser);
@@ -130,8 +131,7 @@ void main() {
       expect(await storage.load(), isEmpty);
     });
 
-    test('load never throws when the browser storage itself throws',
-        () async {
+    test('load never throws when the browser storage itself throws', () async {
       final browser = _FakeBrowserStorage()
         ..getError = () => StateError('storage unavailable');
       final storage = AllBoxWebStorage(container: 'c', browserStorage: browser);
@@ -139,7 +139,8 @@ void main() {
       expect(await storage.load(), isEmpty);
     });
 
-    test('save throws AllBoxStorageException when the value is not '
+    test(
+        'save throws AllBoxStorageException when the value is not '
         'JSON-encodable', () async {
       final storage = AllBoxWebStorage(
         container: 'c',
@@ -152,9 +153,9 @@ void main() {
       );
     });
 
-    test('save throws a quota-flavored AllBoxStorageException when the '
-        'browser storage rejects the write with a quota-like error',
-        () async {
+    test(
+        'save throws a quota-flavored AllBoxStorageException when the '
+        'browser storage rejects the write with a quota-like error', () async {
       final browser = _FakeBrowserStorage()
         ..setError = () => Exception('QuotaExceededError: too much data');
       final storage = AllBoxWebStorage(container: 'c', browserStorage: browser);
@@ -171,7 +172,8 @@ void main() {
       );
     });
 
-    test('save throws a generic AllBoxStorageException for other browser '
+    test(
+        'save throws a generic AllBoxStorageException for other browser '
         'storage failures', () async {
       final browser = _FakeBrowserStorage()
         ..setError = () => StateError('disabled by user');
@@ -194,7 +196,8 @@ void main() {
       expect(await storage.hasPersistedData(), isFalse);
     });
 
-    test('delete throws AllBoxStorageException when the browser storage '
+    test(
+        'delete throws AllBoxStorageException when the browser storage '
         'throws', () async {
       final browser = _FakeBrowserStorage()
         ..removeError = () => StateError('boom');
@@ -206,7 +209,8 @@ void main() {
       );
     });
 
-    test('hasPersistedData throws AllBoxStorageException when the browser '
+    test(
+        'hasPersistedData throws AllBoxStorageException when the browser '
         'storage throws', () async {
       final browser = _FakeBrowserStorage()
         ..getError = () => StateError('boom');
@@ -231,7 +235,8 @@ void main() {
     test('save/load round-trips a large snapshot (5,000 keys) intact',
         () async {
       final browser = _FakeBrowserStorage();
-      final storage = AllBoxWebStorage(container: 'large', browserStorage: browser);
+      final storage =
+          AllBoxWebStorage(container: 'large', browserStorage: browser);
 
       final snapshot = <String, dynamic>{
         for (var i = 0; i < 5000; i++) 'key_$i': 'value_$i',
@@ -246,10 +251,10 @@ void main() {
       expect(loaded['key_4999'], 'value_4999');
     });
 
-    test('save/load round-trips a single large string value intact',
-        () async {
+    test('save/load round-trips a single large string value intact', () async {
       final browser = _FakeBrowserStorage();
-      final storage = AllBoxWebStorage(container: 'large', browserStorage: browser);
+      final storage =
+          AllBoxWebStorage(container: 'large', browserStorage: browser);
 
       // ~200 KB single value: well inside typical localStorage quotas
       // (commonly a few MB per origin), but large enough to catch anything
@@ -263,10 +268,12 @@ void main() {
       expect((loaded['blob'] as String).length, bigValue.length);
     });
 
-    test('a large save/load round-trip stays reasonably fast against a '
+    test(
+        'a large save/load round-trip stays reasonably fast against a '
         'synchronous fake storage', () async {
       final browser = _FakeBrowserStorage();
-      final storage = AllBoxWebStorage(container: 'large', browserStorage: browser);
+      final storage =
+          AllBoxWebStorage(container: 'large', browserStorage: browser);
 
       final snapshot = <String, dynamic>{
         for (var i = 0; i < 5000; i++) 'key_$i': i,

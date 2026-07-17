@@ -16,7 +16,8 @@ import 'package:test/test.dart';
 import 'package:all_box/all_box.dart';
 
 Future<Directory> _tempDir(String label) async {
-  final dir = await Directory.systemTemp.createTemp('all_box_inspector_${label}_');
+  final dir =
+      await Directory.systemTemp.createTemp('all_box_inspector_${label}_');
   addTearDown(() async {
     AllBox.resetInstanceForTesting(label);
     if (dir.existsSync()) {
@@ -78,8 +79,7 @@ void main() {
       expect(afterFlush.pendingFlush, isFalse);
     });
 
-    test('placeholder (never initialized) container is reported as such',
-        () {
+    test('placeholder (never initialized) container is reported as such', () {
       const container = 'inspector_placeholder';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
 
@@ -115,6 +115,32 @@ void main() {
       expect(box.read<int>('k'), 2);
       expect(() => snap.entries['k'] = 3, throwsUnsupportedError);
     });
+
+    test('snapshot deeply freezes nested maps and lists', () async {
+      const container = 'inspector_deep_copy';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      final profile = <String, dynamic>{
+        'name': 'Carlos',
+        'tags': <dynamic>['admin'],
+      };
+      await AllBox.memory(container);
+      final box = AllBox(container);
+      box.write('profile', profile);
+
+      final snap = AllBoxInspector.snapshotOf(container)!;
+      profile['name'] = 'Changed after snapshot';
+      (profile['tags'] as List<dynamic>).add('late');
+
+      final snapProfile = snap.entries['profile'] as Map<String, dynamic>;
+      expect(snapProfile['name'], 'Carlos');
+      expect(snapProfile['tags'], <dynamic>['admin']);
+      expect(() => snapProfile['name'] = 'mutated', throwsUnsupportedError);
+      expect(
+        () => (snapProfile['tags'] as List<dynamic>).add('mutated'),
+        throwsUnsupportedError,
+      );
+    });
   });
 
   group('AllBoxInspector.snapshotAsJson / snapshotOfAsJson', () {
@@ -125,7 +151,10 @@ void main() {
 
       await AllBox.memory(
         container,
-        initialData: <String, dynamic>{'a': 1, 'nested': <String, dynamic>{'x': true}},
+        initialData: <String, dynamic>{
+          'a': 1,
+          'nested': <String, dynamic>{'x': true}
+        },
       );
 
       final single = AllBoxInspector.snapshotOfAsJson(container);
@@ -151,7 +180,8 @@ void main() {
       );
     });
 
-    test('non-JSON-encodable value becomes a placeholder, not a throw', () async {
+    test('non-JSON-encodable value becomes a placeholder, not a throw',
+        () async {
       const container = 'inspector_json_non_encodable';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
 
@@ -180,7 +210,8 @@ void main() {
       expect(AllBoxInspector.mutationEventKind, 'all_box:mutation');
     });
 
-    test('write/writeAndFlush/writeAndSave/remove/erase still behave '
+    test(
+        'write/writeAndFlush/writeAndSave/remove/erase still behave '
         'normally with the mutation-event hook in place', () async {
       const container = 'inspector_mutation_events';
       addTearDown(() => AllBox.resetInstanceForTesting(container));

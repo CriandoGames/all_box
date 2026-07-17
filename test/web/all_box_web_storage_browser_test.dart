@@ -120,7 +120,8 @@ void main() {
       expect(raw, anyOf(isNull, '{}'));
     });
 
-    test('a moderately large payload (5,000 keys) round-trips through '
+    test(
+        'a moderately large payload (5,000 keys) round-trips through '
         'real localStorage', () async {
       const container = 'browser_large_payload_test';
       addTearDown(() {

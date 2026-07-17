@@ -14,6 +14,7 @@ const bool isWebSupported = false;
 AllBoxStorage createPlatformStorage({
   required String container,
   String? path,
+  bool validateContainerName = false,
 }) {
   if (path == null) {
     throw AllBoxStorageException(
@@ -22,5 +23,9 @@ AllBoxStorage createPlatformStorage({
       'layer.',
     );
   }
-  return AllBoxIoStorage(container: container, directoryPath: path);
+  return AllBoxIoStorage(
+    container: container,
+    directoryPath: path,
+    validateContainerName: validateContainerName,
+  );
 }

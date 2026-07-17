@@ -97,7 +97,8 @@ abstract interface class AllBoxStorage {
   ///
   /// **PT-BR:** Persiste [snapshot] como o estado atual e completo deste
   /// container, com a garantia de durabilidade pedida por [mode].
-  Future<void> save(Map<String, dynamic> snapshot, {required AllBoxPersistMode mode});
+  Future<void> save(Map<String, dynamic> snapshot,
+      {required AllBoxPersistMode mode});
 
   /// Permanently removes any persisted data for this container.
   ///

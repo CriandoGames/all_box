@@ -49,6 +49,7 @@ enum AllBoxBackendKind {
 /// um container [AllBox], produzido por [AllBoxInspector]. Somente em
 /// debug/profile — veja [AllBoxInspector.snapshot].
 class AllBoxContainerSnapshot {
+  /// Creates a read-only snapshot of one container.
   const AllBoxContainerSnapshot({
     required this.container,
     required this.isInitialized,
@@ -172,8 +173,7 @@ class AllBoxContainerSnapshot {
   }
 
   @override
-  String toString() =>
-      'AllBoxContainerSnapshot(container: $container, '
+  String toString() => 'AllBoxContainerSnapshot(container: $container, '
       'isInitialized: $isInitialized, backend: $backend, '
       'pendingFlush: $pendingFlush, ${entries.length} keys, '
       '~$approximateSizeBytes bytes)';

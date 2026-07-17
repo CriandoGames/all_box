@@ -160,8 +160,7 @@ void main() {
 
     // Window 3: .db was fully swapped in, then the process died. Trivially
     // fine, pinned here for completeness.
-    test('crash right after the swap → new .db wins over older .bak',
-        () async {
+    test('crash right after the swap → new .db wins over older .bak', () async {
       const container = 'crash_window_3';
       final dir = await _tempDir(container);
 
@@ -294,8 +293,8 @@ void main() {
         for (var i = 0; i < 10; i++) box.writeAndFlush('second_$i', i),
       ]);
 
-      expect(box.flushCountForTesting - flushesAfterFirst,
-          lessThanOrEqualTo(2));
+      expect(
+          box.flushCountForTesting - flushesAfterFirst, lessThanOrEqualTo(2));
 
       final persisted = _readJson(File('${dir.path}/$container.db'));
       for (var i = 0; i < 10; i++) {
@@ -398,7 +397,8 @@ void main() {
       expect(_readJson(File('${dir.path}/$container.bak')), {'v': 1});
     });
 
-    test('coalesces with writeAndFlush in the same burst (strongest '
+    test(
+        'coalesces with writeAndFlush in the same burst (strongest '
         'durability wins, single write covers both)', () async {
       const container = 'save_mixed_burst';
       final dir = await _tempDir(container);
@@ -434,8 +434,7 @@ void main() {
       expect(reloaded.read<int>('answer'), 42);
     });
 
-    test('throws StateError before init, like the other write APIs',
-        () async {
+    test('throws StateError before init, like the other write APIs', () async {
       const container = 'save_uninitialized';
       addTearDown(() => AllBox.resetInstanceForTesting(container));
       final box = AllBox(container);
@@ -445,7 +444,8 @@ void main() {
   });
 
   group('scheduleFlush timer semantics (armed once per burst)', () {
-    test('writes during the armed window ride the same timer: one flush, '
+    test(
+        'writes during the armed window ride the same timer: one flush, '
         'all data included', () async {
       const container = 'timer_single_burst';
       final dir = await _tempDir(container);
@@ -597,7 +597,8 @@ void main() {
       expect(reloaded.read<String>('blob'), bigValue);
     });
 
-    test('reading 5,000 keys back after init stays fast (regression guard, '
+    test(
+        'reading 5,000 keys back after init stays fast (regression guard, '
         'not a strict benchmark)', () async {
       const container = 'roundtrip_large_read_perf';
       final dir = await _tempDir(container);

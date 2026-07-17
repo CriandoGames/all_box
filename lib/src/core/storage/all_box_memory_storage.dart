@@ -31,7 +31,8 @@ class AllBoxMemoryStorage implements AllBoxStorage {
   Future<bool> hasPersistedData() async => _everPersisted;
 
   @override
-  Future<Map<String, dynamic>> load() async => Map<String, dynamic>.of(_snapshot);
+  Future<Map<String, dynamic>> load() async =>
+      Map<String, dynamic>.of(_snapshot);
 
   @override
   Future<void> save(

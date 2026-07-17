@@ -175,7 +175,7 @@ class AllBoxInspector {
       isInitialized: true,
       backend: _backendOf(box._flush),
       pendingFlush: _pendingFlushOf(box._flush),
-      entries: Map<String, dynamic>.unmodifiable(box._box),
+      entries: _deepImmutableMap(box._box),
       approximateSizeBytes: _approximateSizeOf(box._box),
     );
   }
@@ -224,5 +224,20 @@ class AllBoxInspector {
       }
       return total;
     }
+  }
+
+  static Map<String, dynamic> _deepImmutableMap(Map<dynamic, dynamic> source) {
+    return Map<String, dynamic>.unmodifiable(<String, dynamic>{
+      for (final entry in source.entries)
+        entry.key.toString(): _deepImmutableValue(entry.value),
+    });
+  }
+
+  static Object? _deepImmutableValue(Object? value) {
+    if (value is Map) return _deepImmutableMap(value);
+    if (value is List) {
+      return List<dynamic>.unmodifiable(value.map(_deepImmutableValue));
+    }
+    return value;
   }
 }
