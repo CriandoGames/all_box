@@ -18,5 +18,9 @@ environment:
   sdk: ">=3.3.0 <4.0.0"
 
 dev_dependencies:
-  test: ^1.25.0
+  test: ^1.25.15
   lints: ^3.0.0
+  file: ^7.0.0
+  frontend_server_client: ^4.0.0
+  pub_semver: ^2.1.4
+  watcher: ^1.1.0
