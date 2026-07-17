@@ -21,6 +21,7 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
   final String container;
   final AllBoxIndexedDbDriver _indexedDb;
   final AllBoxBrowserStorage _legacyStorage;
+  Map<String, dynamic> _baseSnapshot = <String, dynamic>{};
 
   String get _legacyKey => 'all_box::$container';
 
@@ -43,16 +44,26 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
       return _loadLegacy();
     }
 
-    if (indexedRaw != null) return _decodeOrEmpty(indexedRaw);
+    if (indexedRaw != null) {
+      final loaded = _decodeJsonMapOrEmpty(indexedRaw);
+      _baseSnapshot = _copyJsonMap(loaded);
+      return _copyJsonMap(loaded);
+    }
 
     final legacyRaw = _readLegacyRaw();
-    if (legacyRaw == null) return <String, dynamic>{};
+    if (legacyRaw == null) {
+      _baseSnapshot = <String, dynamic>{};
+      return <String, dynamic>{};
+    }
 
-    final loaded = _decodeOrEmpty(legacyRaw);
+    final loaded = _decodeJsonMapOrEmpty(legacyRaw);
+    _baseSnapshot = _copyJsonMap(loaded);
     if (loaded.isEmpty && legacyRaw.trim() != '{}') return loaded;
 
     try {
-      await _indexedDb.write(container, legacyRaw);
+      await _indexedDb.update(container, (currentJsonText) {
+        return currentJsonText ?? legacyRaw;
+      });
       _legacyStorage.removeItem(_legacyKey);
     } on Object {
       // Keep localStorage intact until IndexedDB has definitely accepted the
@@ -67,9 +78,9 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
     Map<String, dynamic> snapshot, {
     required AllBoxPersistMode mode,
   }) async {
-    final String jsonText;
+    final Map<String, dynamic> localSnapshot;
     try {
-      jsonText = jsonEncode(snapshot);
+      localSnapshot = _normalizeJsonMap(snapshot);
     } on Object catch (error, stackTrace) {
       throw AllBoxStorageException(
         'AllBox("$container"): failed to encode snapshot to JSON for '
@@ -80,9 +91,24 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
     }
 
     try {
-      await _indexedDb.write(container, jsonText);
+      await _indexedDb.update(container, (currentJsonText) {
+        final currentSnapshot = currentJsonText == null
+            ? <String, dynamic>{}
+            : _decodeJsonMapOrEmpty(currentJsonText);
+        final merged = _mergeSnapshotDelta(
+          baseSnapshot: _baseSnapshot,
+          localSnapshot: localSnapshot,
+          currentSnapshot: currentSnapshot,
+        );
+        return jsonEncode(merged);
+      });
       _legacyStorage.removeItem(_legacyKey);
+      // Keep the local base as this instance's own persisted view, not the
+      // merged global snapshot. Otherwise remote keys preserved from another
+      // tab would look like local deletions on the next save.
+      _baseSnapshot = _copyJsonMap(localSnapshot);
     } on Object catch (indexedError) {
+      final jsonText = jsonEncode(localSnapshot);
       try {
         _legacyStorage.setItem(_legacyKey, jsonText);
       } on Object catch (legacyError, legacyStackTrace) {
@@ -93,6 +119,7 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
           stackTrace: legacyStackTrace,
         );
       }
+      _baseSnapshot = _copyJsonMap(localSnapshot);
       return;
     }
   }
@@ -160,8 +187,13 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
 
   Map<String, dynamic> _loadLegacy() {
     final raw = _readLegacyRaw();
-    if (raw == null) return <String, dynamic>{};
-    return _decodeOrEmpty(raw);
+    if (raw == null) {
+      _baseSnapshot = <String, dynamic>{};
+      return <String, dynamic>{};
+    }
+    final loaded = _decodeJsonMapOrEmpty(raw);
+    _baseSnapshot = _copyJsonMap(loaded);
+    return _copyJsonMap(loaded);
   }
 
   String? _readLegacyRaw() {
@@ -171,17 +203,70 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
       return null;
     }
   }
+}
 
-  Map<String, dynamic> _decodeOrEmpty(String raw) {
-    try {
-      final dynamic decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) return decoded;
-      if (decoded is Map<dynamic, dynamic>) {
-        return Map<String, dynamic>.from(decoded);
-      }
-      return <String, dynamic>{};
-    } on FormatException {
-      return <String, dynamic>{};
+Map<String, dynamic> _decodeJsonMapOrEmpty(String raw) {
+  try {
+    final dynamic decoded = jsonDecode(raw);
+    if (decoded is Map<String, dynamic>) return _copyJsonMap(decoded);
+    if (decoded is Map<dynamic, dynamic>) {
+      return _copyJsonMap(Map<String, dynamic>.from(decoded));
+    }
+    return <String, dynamic>{};
+  } on FormatException {
+    return <String, dynamic>{};
+  }
+}
+
+Map<String, dynamic> _normalizeJsonMap(Map<String, dynamic> snapshot) {
+  final dynamic decoded = jsonDecode(jsonEncode(snapshot));
+  if (decoded is Map<String, dynamic>) return _copyJsonMap(decoded);
+  if (decoded is Map<dynamic, dynamic>) {
+    return _copyJsonMap(Map<String, dynamic>.from(decoded));
+  }
+  return <String, dynamic>{};
+}
+
+Map<String, dynamic> _copyJsonMap(Map<String, dynamic> source) {
+  return <String, dynamic>{
+    for (final entry in source.entries) entry.key: _copyJsonValue(entry.value),
+  };
+}
+
+dynamic _copyJsonValue(dynamic value) {
+  if (value is Map<String, dynamic>) return _copyJsonMap(value);
+  if (value is Map<dynamic, dynamic>) {
+    return _copyJsonMap(Map<String, dynamic>.from(value));
+  }
+  if (value is List) return value.map(_copyJsonValue).toList();
+  return value;
+}
+
+Map<String, dynamic> _mergeSnapshotDelta({
+  required Map<String, dynamic> baseSnapshot,
+  required Map<String, dynamic> localSnapshot,
+  required Map<String, dynamic> currentSnapshot,
+}) {
+  final merged = _copyJsonMap(currentSnapshot);
+
+  for (final key in baseSnapshot.keys) {
+    if (!localSnapshot.containsKey(key)) {
+      merged.remove(key);
     }
   }
+
+  for (final entry in localSnapshot.entries) {
+    final key = entry.key;
+    if (!baseSnapshot.containsKey(key) ||
+        !_jsonEquals(baseSnapshot[key], entry.value)) {
+      merged[key] = _copyJsonValue(entry.value);
+    }
+  }
+
+  return merged;
+}
+
+bool _jsonEquals(Object? a, Object? b) {
+  if (identical(a, b)) return true;
+  return jsonEncode(a) == jsonEncode(b);
 }

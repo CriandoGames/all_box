@@ -191,8 +191,7 @@ and real-Chrome regression tests. It is not the default Web backend:
 `AllBox.init()` still resolves to `window.localStorage` unless the caller
 explicitly opts into the beta migration backend with
 `experimentalIndexedDbBackend: true`. Inspector compatibility for the Web
-backend family is covered below; safe multi-tab behavior still needs a
-separate design.
+backend family is covered below.
 
 The localStorage -> IndexedDB migration path is implemented as
 `AllBoxIndexedDbMigrationStorage` and is selected only by the explicit beta
@@ -202,6 +201,16 @@ IndexedDB write, IndexedDB failure fallback to localStorage, and delete
 behavior across both stores.
 Inspector compatibility is covered separately: all Web-family backends still
 report `backend: web`, with `backendDetail` identifying the concrete backend.
+
+IndexedDB writes use a per-instance delta merge instead of overwriting the
+entire persisted snapshot blindly. Each storage instance remembers the
+snapshot it loaded or last saved locally. On save, it computes keys changed
+or removed by that instance, opens one IndexedDB `readwrite` transaction,
+reads the current persisted JSON inside that transaction, applies only the
+local delta, and writes the merged JSON back. This mitigates the common
+multi-tab lost-update case where two tabs write different keys from stale
+snapshots. If two tabs write or remove the same key, the later persisted
+write wins; AllBox does not expose PouchDB-style conflict documents.
 
 The internal IndexedDB browser driver uses schema version 1 with a single
 `containers` object store. After opening a database it verifies that this
@@ -250,11 +259,13 @@ same machine/browser before making performance claims about
   `AllBoxStorageException`. Data isn't encrypted: don't store secrets or
   sensitive data in a Web container without encrypting it yourself first.
   Not recommended for large volumes of data.
-- **The built-in Web backend is Window-only and not multi-tab safe.**
+- **The default Web backend is Window-only and not multi-tab safe.**
   It uses `window.localStorage` and keeps synchronization only inside the
   current Dart isolate/window. Web Workers, Service Workers, and safe
-  multi-tab writes require a different backend/contract, such as a future
-  IndexedDB-backed design.
+  multi-tab writes require a different backend/contract. The beta IndexedDB
+  backend mitigates stale-snapshot overwrites for different keys, but
+  same-key conflicts remain last-write-wins and there is no cross-tab
+  reactive notification API.
 - **Not isolate-safe.** Each `AllBox` keeps its state in memory in the
   isolate where it was initialized; there's no cross-isolate
   synchronization. If you use multiple isolates (e.g. `compute()`,

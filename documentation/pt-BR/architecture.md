@@ -203,8 +203,7 @@ testes regressivos VM/fake e Chrome real. Ele não é o backend Web padrão:
 `AllBox.init()` continua resolvendo para `window.localStorage` salvo quando
 quem chama opta explicitamente pelo backend beta com migração usando
 `experimentalIndexedDbBackend: true`. A compatibilidade do inspector para a
-família de backends Web é coberta abaixo; comportamento multiaba seguro
-ainda precisa de um desenho separado.
+família de backends Web é coberta abaixo.
 
 O caminho de migração de localStorage -> IndexedDB está implementado como
 `AllBoxIndexedDbMigrationStorage` e é selecionado apenas pelo opt-in beta
@@ -215,6 +214,17 @@ IndexedDB falha, e delete atravessando os dois stores.
 A compatibilidade do inspector é coberta separadamente: todos os backends da
 família Web continuam reportando `backend: web`, com `backendDetail`
 identificando o backend concreto.
+
+Escritas IndexedDB usam merge por delta por instância em vez de sobrescrever
+cegamente o snapshot persistido inteiro. Cada instância de storage lembra o
+snapshot que carregou ou salvou localmente por último. No save, ela calcula
+as chaves alteradas ou removidas por essa instância, abre uma única
+transação IndexedDB `readwrite`, lê o JSON persistido atual dentro dessa
+transação, aplica apenas o delta local e grava o JSON mesclado de volta.
+Isso mitiga o caso comum de lost update multiaba em que duas abas escrevem
+chaves diferentes a partir de snapshots antigos. Se duas abas escrevem ou
+removem a mesma chave, a escrita persistida por último vence; o AllBox não
+expõe documentos de conflito no estilo PouchDB.
 
 O driver IndexedDB interno de navegador usa schema version 1 com um único
 object store `containers`. Depois de abrir um banco, ele verifica se esse
@@ -265,11 +275,13 @@ ambiente/navegador antes de fazer afirmações de desempenho sobre bloqueio de
   lança uma `AllBoxStorageException`. Os dados não são criptografados: não
   guarde segredos ou dados sensíveis num container Web sem criptografá-los
   você mesmo antes. Não recomendado para grandes volumes de dados.
-- **O backend Web embutido é somente Window e não é seguro para multiaba.**
+- **O backend Web default é somente Window e não é seguro para multiaba.**
   Ele usa `window.localStorage` e mantém sincronização apenas dentro da
   janela/isolate Dart atual. Web Workers, Service Workers e escritas
-  multiaba seguras exigem outro backend/contrato, como um desenho futuro
-  baseado em IndexedDB.
+  multiaba seguras exigem outro backend/contrato. O backend IndexedDB beta
+  mitiga sobrescrita por snapshot antigo para chaves diferentes, mas
+  conflitos na mesma chave continuam last-write-wins e não há API de
+  notificação reativa cross-tab.
 - **Não é isolate-safe.** Cada `AllBox` mantém seu estado em memória no
   isolate onde foi inicializado; não há sincronização entre isolates. Se
   você usa múltiplos isolates (ex.: `compute()`, isolates de background),

@@ -105,6 +105,20 @@ class AllBoxBrowserIndexedDbDriver implements AllBoxIndexedDbDriver {
   }
 
   @override
+  Future<String> update(
+    String container,
+    String Function(String? currentJsonText) merge,
+  ) {
+    return _withStore('readwrite', (store) async {
+      final currentResult = await _waitForRequest(store.get(container.toJS));
+      final currentValue = currentResult.dartify();
+      final nextValue = merge(currentValue is String ? currentValue : null);
+      await _waitForRequest(store.put(nextValue.toJS, container.toJS));
+      return nextValue;
+    });
+  }
+
+  @override
   Future<void> delete(String container) async {
     await _withStore('readwrite', (store) async {
       await _waitForRequest(store.delete(container.toJS));

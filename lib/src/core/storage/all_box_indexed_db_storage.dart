@@ -16,6 +16,11 @@ abstract interface class AllBoxIndexedDbDriver {
 
   Future<void> write(String container, String jsonText);
 
+  Future<String> update(
+    String container,
+    String Function(String? currentJsonText) merge,
+  );
+
   Future<void> delete(String container);
 
   Future<void> close();
@@ -34,6 +39,7 @@ class AllBoxIndexedDbStorage implements AllBoxStorage {
 
   final String container;
   final AllBoxIndexedDbDriver _driver;
+  Map<String, dynamic> _baseSnapshot = <String, dynamic>{};
 
   @override
   Future<bool> hasPersistedData() async {
@@ -55,21 +61,18 @@ class AllBoxIndexedDbStorage implements AllBoxStorage {
       raw = await _driver.read(container);
     } on Object {
       // Match the AllBoxStorage contract: load must not crash the caller.
+      _baseSnapshot = <String, dynamic>{};
       return <String, dynamic>{};
     }
 
-    if (raw == null) return <String, dynamic>{};
-
-    try {
-      final dynamic decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) return decoded;
-      if (decoded is Map<dynamic, dynamic>) {
-        return Map<String, dynamic>.from(decoded);
-      }
-      return <String, dynamic>{};
-    } on FormatException {
+    if (raw == null) {
+      _baseSnapshot = <String, dynamic>{};
       return <String, dynamic>{};
     }
+
+    final decoded = _decodeJsonMapOrEmpty(raw);
+    _baseSnapshot = _copyJsonMap(decoded);
+    return _copyJsonMap(decoded);
   }
 
   @override
@@ -77,9 +80,9 @@ class AllBoxIndexedDbStorage implements AllBoxStorage {
     Map<String, dynamic> snapshot, {
     required AllBoxPersistMode mode,
   }) async {
-    final String jsonText;
+    final Map<String, dynamic> localSnapshot;
     try {
-      jsonText = jsonEncode(snapshot);
+      localSnapshot = _normalizeJsonMap(snapshot);
     } on Object catch (error, stackTrace) {
       throw AllBoxStorageException(
         'AllBox("$container"): failed to encode snapshot to JSON for '
@@ -90,7 +93,21 @@ class AllBoxIndexedDbStorage implements AllBoxStorage {
     }
 
     try {
-      await _driver.write(container, jsonText);
+      await _driver.update(container, (currentJsonText) {
+        final currentSnapshot = currentJsonText == null
+            ? <String, dynamic>{}
+            : _decodeJsonMapOrEmpty(currentJsonText);
+        final merged = _mergeSnapshotDelta(
+          baseSnapshot: _baseSnapshot,
+          localSnapshot: localSnapshot,
+          currentSnapshot: currentSnapshot,
+        );
+        return jsonEncode(merged);
+      });
+      // Keep the local base as this instance's own persisted view, not the
+      // merged global snapshot. Otherwise remote keys preserved from another
+      // tab would look like local deletions on the next save.
+      _baseSnapshot = _copyJsonMap(localSnapshot);
     } on Object catch (error, stackTrace) {
       throw AllBoxStorageException(
         'AllBox("$container"): failed to write to IndexedDB storage.',
@@ -125,4 +142,70 @@ class AllBoxIndexedDbStorage implements AllBoxStorage {
       );
     }
   }
+}
+
+Map<String, dynamic> _decodeJsonMapOrEmpty(String raw) {
+  try {
+    final dynamic decoded = jsonDecode(raw);
+    if (decoded is Map<String, dynamic>) return _copyJsonMap(decoded);
+    if (decoded is Map<dynamic, dynamic>) {
+      return _copyJsonMap(Map<String, dynamic>.from(decoded));
+    }
+    return <String, dynamic>{};
+  } on FormatException {
+    return <String, dynamic>{};
+  }
+}
+
+Map<String, dynamic> _normalizeJsonMap(Map<String, dynamic> snapshot) {
+  final dynamic decoded = jsonDecode(jsonEncode(snapshot));
+  if (decoded is Map<String, dynamic>) return _copyJsonMap(decoded);
+  if (decoded is Map<dynamic, dynamic>) {
+    return _copyJsonMap(Map<String, dynamic>.from(decoded));
+  }
+  return <String, dynamic>{};
+}
+
+Map<String, dynamic> _copyJsonMap(Map<String, dynamic> source) {
+  return <String, dynamic>{
+    for (final entry in source.entries) entry.key: _copyJsonValue(entry.value),
+  };
+}
+
+dynamic _copyJsonValue(dynamic value) {
+  if (value is Map<String, dynamic>) return _copyJsonMap(value);
+  if (value is Map<dynamic, dynamic>) {
+    return _copyJsonMap(Map<String, dynamic>.from(value));
+  }
+  if (value is List) return value.map(_copyJsonValue).toList();
+  return value;
+}
+
+Map<String, dynamic> _mergeSnapshotDelta({
+  required Map<String, dynamic> baseSnapshot,
+  required Map<String, dynamic> localSnapshot,
+  required Map<String, dynamic> currentSnapshot,
+}) {
+  final merged = _copyJsonMap(currentSnapshot);
+
+  for (final key in baseSnapshot.keys) {
+    if (!localSnapshot.containsKey(key)) {
+      merged.remove(key);
+    }
+  }
+
+  for (final entry in localSnapshot.entries) {
+    final key = entry.key;
+    if (!baseSnapshot.containsKey(key) ||
+        !_jsonEquals(baseSnapshot[key], entry.value)) {
+      merged[key] = _copyJsonValue(entry.value);
+    }
+  }
+
+  return merged;
+}
+
+bool _jsonEquals(Object? a, Object? b) {
+  if (identical(a, b)) return true;
+  return jsonEncode(a) == jsonEncode(b);
 }

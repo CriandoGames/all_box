@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/tests-137-brightgreen" alt="137 tests">
+  <img src="https://img.shields.io/badge/tests-143-brightgreen" alt="143 tests">
 </p>
 
 <p align="center">
@@ -167,7 +167,9 @@ final box = await AllBox.init(
 
 This is a beta backend. It migrates legacy `localStorage` data into
 IndexedDB and keeps `localStorage` as the default until the backend is
-validated further.
+validated further. When separate tabs write different keys, the beta
+IndexedDB backend merges those changes in a single IndexedDB transaction.
+If two tabs write the same key, the last persisted write wins.
 
 ### Seeding data on first run
 
@@ -402,9 +404,10 @@ full embedded database with queries, indexes or relations (see
   async debounced failures without changing `write()` into an async API.
 - **Web is Window/localStorage by default.** `1.0.0-beta.1` adds explicit
   opt-in for the IndexedDB migration backend through
-  `experimentalIndexedDbBackend: true`. Web Workers, Service Workers, safe
-  multi-tab writes, and making IndexedDB the default remain future backend
-  work.
+  `experimentalIndexedDbBackend: true`. The beta IndexedDB backend mitigates
+  multi-tab lost updates for different keys using transactional delta
+  merging; same-key conflicts remain last-write-wins. Web Workers, Service
+  Workers, and making IndexedDB the default remain future backend work.
 - **No built-in reactivity** — see [Need reactivity?](#-need-reactivity).
 
 The write-ahead + atomic-rename pipeline, flush/debounce coordination, the

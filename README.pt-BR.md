@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/testes-137-brightgreen" alt="137 testes">
+  <img src="https://img.shields.io/badge/testes-143-brightgreen" alt="143 testes">
 </p>
 
 <p align="center">
@@ -164,6 +164,9 @@ final box = await AllBox.init(
 
 Esse backend ainda é beta. Ele migra dados legados do `localStorage` para o
 IndexedDB e mantém `localStorage` como default até a validação avançar.
+Quando abas separadas escrevem chaves diferentes, o backend IndexedDB beta
+faz merge dessas mudanças em uma única transação IndexedDB. Se duas abas
+escrevem a mesma chave, a última escrita persistida vence.
 
 ### Semeando dados no primeiro run
 
@@ -404,8 +407,10 @@ O `all_box` segue uma lista curta de decisões de design deliberadas:
   falhas assíncronas do flush debounced sem tornar `write()` assíncrono.
 - **Web usa Window/localStorage por padrão.** A `1.0.0-beta.1` adiciona
   opt-in explícito para o backend IndexedDB com migração via
-  `experimentalIndexedDbBackend: true`. Web Workers, Service Workers,
-  escritas multiaba seguras e tornar IndexedDB o default continuam sendo
+  `experimentalIndexedDbBackend: true`. O backend IndexedDB beta mitiga
+  perda de updates multiaba para chaves diferentes usando merge
+  transacional por delta; conflitos na mesma chave continuam last-write-wins.
+  Web Workers, Service Workers e tornar IndexedDB o default continuam sendo
   trabalho futuro de backend.
 - **Sem reatividade embutida** — veja
   [Precisa de reatividade?](#-precisa-de-reatividade).

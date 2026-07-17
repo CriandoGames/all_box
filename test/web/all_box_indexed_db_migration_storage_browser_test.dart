@@ -52,6 +52,14 @@ class _ThrowingIndexedDbDriver implements AllBoxIndexedDbDriver {
   }
 
   @override
+  Future<String> update(
+    String container,
+    String Function(String? currentJsonText) merge,
+  ) async {
+    throw StateError('IndexedDB unavailable');
+  }
+
+  @override
   Future<void> delete(String container) async {
     throw StateError('IndexedDB unavailable');
   }
@@ -112,6 +120,41 @@ void main() {
       expect(await second.load(), {'theme': 'indexed'});
       expect(legacy.getItem('all_box::settings'), '{"theme":"legacy"}');
       await second.close();
+    });
+
+    test('merges different keys written by separate migrated instances',
+        () async {
+      final first = storage('settings');
+      final second = storage('settings');
+
+      expect(await first.load(), isEmpty);
+      expect(await second.load(), isEmpty);
+
+      await first.save({'theme': 'dark'}, mode: AllBoxPersistMode.flush);
+      await second.save({'token': 'abc'}, mode: AllBoxPersistMode.flush);
+      await first.close();
+      await second.close();
+
+      final reloaded = storage('settings');
+      expect(await reloaded.load(), {'theme': 'dark', 'token': 'abc'});
+      await reloaded.close();
+    });
+
+    test('uses last write wins for the same migrated key', () async {
+      final first = storage('settings');
+      final second = storage('settings');
+
+      await first.load();
+      await second.load();
+
+      await first.save({'theme': 'dark'}, mode: AllBoxPersistMode.flush);
+      await second.save({'theme': 'light'}, mode: AllBoxPersistMode.flush);
+      await first.close();
+      await second.close();
+
+      final reloaded = storage('settings');
+      expect(await reloaded.load(), {'theme': 'light'});
+      await reloaded.close();
     });
 
     test('save uses legacy localStorage fallback when IndexedDB is unavailable',

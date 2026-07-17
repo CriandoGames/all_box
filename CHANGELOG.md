@@ -13,6 +13,11 @@ stable default.
 - **Migration behavior remains conservative:** legacy localStorage data is
   copied to IndexedDB first, and the legacy copy is removed only after the
   IndexedDB write succeeds.
+- **IndexedDB multi-tab mitigation:** IndexedDB saves now merge a local
+  per-instance delta into the current persisted snapshot inside a single
+  readwrite transaction. Separate tabs/storage instances writing different
+  keys no longer overwrite each other; conflicting writes to the same key
+  remain last-write-wins.
 - **Rollback remains explicit:** omitting `experimentalIndexedDbBackend`
   returns Web initialization to localStorage and does not read existing
   IndexedDB data.

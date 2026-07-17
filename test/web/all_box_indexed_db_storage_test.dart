@@ -37,6 +37,18 @@ class _FakeIndexedDbDriver implements AllBoxIndexedDbDriver {
   }
 
   @override
+  Future<String> update(
+    String container,
+    String Function(String? currentJsonText) merge,
+  ) async {
+    final error = writeError;
+    if (error != null) throw error();
+    final next = merge(_records[container]);
+    _records[container] = next;
+    return next;
+  }
+
+  @override
   Future<void> delete(String container) async {
     final error = deleteError;
     if (error != null) throw error();
@@ -96,6 +108,119 @@ void main() {
         'count': 3,
         'nested': <String, dynamic>{'enabled': true},
       });
+    });
+
+    test('merge preserves different keys written by another instance',
+        () async {
+      final driver = _FakeIndexedDbDriver();
+      final first = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+      final second = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+
+      expect(await first.load(), isEmpty);
+      expect(await second.load(), isEmpty);
+
+      await first.save({'theme': 'dark'}, mode: AllBoxPersistMode.flush);
+      await second.save({'token': 'abc'}, mode: AllBoxPersistMode.flush);
+
+      final reloaded = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+      expect(await reloaded.load(), {'theme': 'dark', 'token': 'abc'});
+    });
+
+    test('same-key conflict uses last write wins', () async {
+      final driver = _FakeIndexedDbDriver();
+      final first = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+      final second = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+
+      await first.load();
+      await second.load();
+
+      await first.save({'theme': 'dark'}, mode: AllBoxPersistMode.flush);
+      await second.save({'theme': 'light'}, mode: AllBoxPersistMode.flush);
+
+      final reloaded = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+      expect(await reloaded.load(), {'theme': 'light'});
+    });
+
+    test('unchanged local keys preserve newer remote values', () async {
+      final driver = _FakeIndexedDbDriver()
+        .._records['settings'] = '{"theme":"old","count":1}';
+      final first = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+      final second = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+
+      expect(await first.load(), {'theme': 'old', 'count': 1});
+      expect(await second.load(), {'theme': 'old', 'count': 1});
+
+      await second.save(
+        {'theme': 'new', 'count': 1},
+        mode: AllBoxPersistMode.flush,
+      );
+      await first.save(
+        {'theme': 'old', 'count': 1, 'localOnly': true},
+        mode: AllBoxPersistMode.flush,
+      );
+
+      final reloaded = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+      expect(await reloaded.load(), {
+        'theme': 'new',
+        'count': 1,
+        'localOnly': true,
+      });
+    });
+
+    test('removed local key wins over newer remote value for that key',
+        () async {
+      final driver = _FakeIndexedDbDriver()
+        .._records['settings'] = '{"theme":"old","count":1}';
+      final first = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+      final second = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+
+      await first.load();
+      await second.load();
+
+      await second.save(
+        {'theme': 'new', 'count': 1},
+        mode: AllBoxPersistMode.flush,
+      );
+      await first.save({'count': 1}, mode: AllBoxPersistMode.flush);
+
+      final reloaded = AllBoxIndexedDbStorage(
+        container: 'settings',
+        driver: driver,
+      );
+      expect(await reloaded.load(), {'count': 1});
     });
 
     test('load falls back to empty on invalid JSON', () async {

@@ -227,6 +227,42 @@ void main() {
       await second.close();
     });
 
+    test('merges different keys written by separate storage instances',
+        () async {
+      final first = storage('multi_tab');
+      final second = storage('multi_tab');
+
+      expect(await first.load(), isEmpty);
+      expect(await second.load(), isEmpty);
+
+      await first.save({'theme': 'dark'}, mode: AllBoxPersistMode.flush);
+      await second.save({'token': 'abc'}, mode: AllBoxPersistMode.flush);
+      await first.close();
+      await second.close();
+
+      final reloaded = storage('multi_tab');
+      expect(await reloaded.load(), {'theme': 'dark', 'token': 'abc'});
+      await reloaded.close();
+    });
+
+    test('uses last write wins for the same key across storage instances',
+        () async {
+      final first = storage('multi_tab_same_key');
+      final second = storage('multi_tab_same_key');
+
+      await first.load();
+      await second.load();
+
+      await first.save({'theme': 'dark'}, mode: AllBoxPersistMode.flush);
+      await second.save({'theme': 'light'}, mode: AllBoxPersistMode.flush);
+      await first.close();
+      await second.close();
+
+      final reloaded = storage('multi_tab_same_key');
+      expect(await reloaded.load(), {'theme': 'light'});
+      await reloaded.close();
+    });
+
     test('delete removes only the selected container', () async {
       final settings = storage('settings');
       final cache = storage('cache');

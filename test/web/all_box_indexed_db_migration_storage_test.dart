@@ -39,6 +39,18 @@ class _FakeIndexedDbDriver implements AllBoxIndexedDbDriver {
   }
 
   @override
+  Future<String> update(
+    String container,
+    String Function(String? currentJsonText) merge,
+  ) async {
+    final error = writeError;
+    if (error != null) throw error();
+    final next = merge(records[container]);
+    records[container] = next;
+    return next;
+  }
+
+  @override
   Future<void> delete(String container) async {
     final error = deleteError;
     if (error != null) throw error();
@@ -159,6 +171,39 @@ void main() {
 
       expect(indexedDb.records[container], '{"theme":"new"}');
       expect(legacy.records.containsKey(legacyKey), isFalse);
+    });
+
+    test('save merges different keys written by another migrated instance',
+        () async {
+      final indexedDb = _FakeIndexedDbDriver();
+      final legacy = _FakeLegacyStorage();
+      final first = storage(indexedDb, legacy);
+      final second = storage(indexedDb, legacy);
+
+      expect(await first.load(), isEmpty);
+      expect(await second.load(), isEmpty);
+
+      await first.save({'theme': 'dark'}, mode: AllBoxPersistMode.flush);
+      await second.save({'token': 'abc'}, mode: AllBoxPersistMode.flush);
+
+      final reloaded = storage(indexedDb, legacy);
+      expect(await reloaded.load(), {'theme': 'dark', 'token': 'abc'});
+    });
+
+    test('save uses last write wins for the same migrated key', () async {
+      final indexedDb = _FakeIndexedDbDriver();
+      final legacy = _FakeLegacyStorage();
+      final first = storage(indexedDb, legacy);
+      final second = storage(indexedDb, legacy);
+
+      await first.load();
+      await second.load();
+
+      await first.save({'theme': 'dark'}, mode: AllBoxPersistMode.flush);
+      await second.save({'theme': 'light'}, mode: AllBoxPersistMode.flush);
+
+      final reloaded = storage(indexedDb, legacy);
+      expect(await reloaded.load(), {'theme': 'light'});
     });
 
     test('save falls back to legacy localStorage when IndexedDB write fails',

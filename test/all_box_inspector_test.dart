@@ -49,6 +49,16 @@ class _InspectorIndexedDbDriver implements AllBoxIndexedDbDriver {
   }
 
   @override
+  Future<String> update(
+    String container,
+    String Function(String? currentJsonText) merge,
+  ) async {
+    final next = merge(values[container]);
+    values[container] = next;
+    return next;
+  }
+
+  @override
   Future<void> delete(String container) async {
     values.remove(container);
   }
