@@ -65,7 +65,7 @@ dart pub add all_box
 
 ```yaml
 dependencies:
-  all_box: ^0.8.0
+  all_box: ^0.7.0
 ```
 
 Para testar o backend Web IndexedDB antes de ele virar default, instale a
@@ -73,7 +73,7 @@ beta explicitamente:
 
 ```yaml
 dependencies:
-  all_box: ^1.0.0-beta.1
+  all_box: ^1.0.0-beta.2
 ```
 
 O `all_box` é Dart puro e tem um único ponto de entrada:
@@ -152,7 +152,7 @@ nomes que parecem caminhos ou nomes reservados do sistema operacional, como
 
 ### IndexedDB Web beta
 
-Na `1.0.0-beta.1`, a Web ainda usa `window.localStorage` por padrão. Você
+Na `1.0.0-beta.2`, a Web ainda usa `window.localStorage` por padrão. Você
 pode optar explicitamente pelo caminho IndexedDB com migração:
 
 ```dart
@@ -415,7 +415,7 @@ O `all_box` segue uma lista curta de decisões de design deliberadas:
   `validateContainerName`.
 - **Falhas de persistência são observáveis.** `onPersistenceError` reporta
   falhas assíncronas do flush debounced sem tornar `write()` assíncrono.
-- **Web usa Window/localStorage por padrão.** A `1.0.0-beta.1` adiciona
+- **Web usa Window/localStorage por padrão.** A `1.0.0-beta.2` adiciona
   opt-in explícito para o backend IndexedDB com migração via
   `experimentalIndexedDbBackend: true`. O backend IndexedDB beta mitiga
   perda de updates multiaba para chaves diferentes usando merge
