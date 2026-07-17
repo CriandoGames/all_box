@@ -28,9 +28,9 @@ jobs:
           sdk: ${{ matrix.sdk }}
       - run: dart --version
       - if: matrix.sdk != '3.3.0'
-        run: dart pub get
+        run: dart pub get --no-example
       - if: matrix.sdk == '3.3.0'
-        run: dart pub downgrade
+        run: dart pub downgrade --no-example
       - run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze
       - run: dart test --reporter expanded
@@ -43,7 +43,7 @@ jobs:
       - uses: dart-lang/setup-dart@v1
         with:
           sdk: stable
-      - run: dart pub get
+      - run: dart pub get --no-example
       - run: dart test -p chrome test/web/all_box_web_storage_browser_test.dart --reporter expanded
       - run: dart test -p chrome test/web/all_box_indexed_db_storage_browser_test.dart --reporter expanded
       - run: dart test -p chrome test/web/all_box_indexed_db_migration_storage_browser_test.dart --reporter expanded
