@@ -552,8 +552,8 @@ class AllBox {
   /// segurando o dado no page cache). Mantém o pipeline completo de
   /// write-ahead + rename atômico no IO, então o arquivo do container nunca
   /// fica meio-escrito. É ordens de magnitude mais barato que
-  /// [writeAndFlush], cujo `fsync` é a única garantia que sobrevive a queda
-  /// de energia.
+  /// [writeAndFlush], que faz flush do arquivo temporário antes do rename e
+  /// oferece o nível mais forte implementado atualmente pelo AllBox.
   ///
   /// Escada de durabilidade: [write] (otimista, debounced) →
   /// [writeAndSave] (espera o write do OS) → [writeAndFlush] (espera o
@@ -863,7 +863,7 @@ class AllBox {
   /// persistido. Feito para testes; não faz parte da API pública estável.
   static void resetInstanceForTesting(String container) {
     final box = _instances.remove(container);
-    box?._flush?.disposeForTesting();
+    box?._flush?.disposeForTesting(closeStorage: true);
   }
 
   /// Number of times this container has actually flushed since [init] (or
@@ -1017,7 +1017,7 @@ abstract class _FlushCoordinator {
     required bool flushPending,
   });
   Future<void> destroy(Map<String, dynamic> snapshot);
-  void disposeForTesting();
+  void disposeForTesting({bool closeStorage = false});
   int get flushCallCountForTesting;
 }
 
@@ -1311,8 +1311,11 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
   }
 
   @override
-  void disposeForTesting() {
+  void disposeForTesting({bool closeStorage = false}) {
     _debounceTimer?.cancel();
+    if (closeStorage) {
+      unawaited(_storage.close().catchError((_) {}));
+    }
   }
 
   static String _mergeOperation(String current, String next) {
@@ -1412,5 +1415,9 @@ class _ImmediateFlushCoordinator implements _FlushCoordinator {
   }
 
   @override
-  void disposeForTesting() {}
+  void disposeForTesting({bool closeStorage = false}) {
+    if (closeStorage) {
+      unawaited(_storage.close().catchError((_) {}));
+    }
+  }
 }

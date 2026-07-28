@@ -9,7 +9,7 @@
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/likes/all_box?label=likes" alt="pub likes"></a>
   <a href="https://pub.dev/packages/all_box/score"><img src="https://img.shields.io/pub/points/all_box?label=pub%20points" alt="pub points"></a>
   <a href="https://github.com/CriandoGames/all_box/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CriandoGames/all_box" alt="license"></a>
-  <img src="https://img.shields.io/badge/tests-143-brightgreen" alt="143 tests">
+  <img src="https://img.shields.io/badge/tests-169-brightgreen" alt="169 tests">
 </p>
 
 <p align="center">
@@ -69,15 +69,7 @@ dart pub add all_box
 
 ```yaml
 dependencies:
-  all_box: ^0.7.0
-```
-
-To try the IndexedDB Web backend before it becomes the default, install the
-beta explicitly:
-
-```yaml
-dependencies:
-  all_box: ^1.0.0-beta.2
+  all_box: ^1.0.0
 ```
 
 `all_box` is pure Dart and has a single entrypoint:
@@ -153,9 +145,9 @@ Strict validation accepts only letters, numbers, `.`, `_` and `-`, and
 rejects path-like or OS-reserved names such as `../data`, `a/b`,
 `cache:name`, `CON` and `NUL`.
 
-### Web IndexedDB beta
+### Web IndexedDB (experimental)
 
-In `1.0.0-beta.2`, Web still uses `window.localStorage` by default. You can
+In `1.0.0`, Web still uses `window.localStorage` by default. You can
 opt into the migration-backed IndexedDB path explicitly:
 
 ```dart
@@ -165,7 +157,7 @@ final box = await AllBox.init(
 );
 ```
 
-This is a beta backend. It migrates legacy `localStorage` data into
+This is an experimental backend. It migrates legacy `localStorage` data into
 IndexedDB and keeps `localStorage` as the default until the backend is
 validated further. When separate tabs write different keys, the beta
 IndexedDB backend merges those changes in a single IndexedDB transaction.
@@ -215,7 +207,7 @@ Use the write tier that matches the moment:
   value was handed to storage, but you do not need the strongest disk-sync
   guarantee.
 - `writeAndFlush()` before lifecycle boundaries or critical checkpoints
-  where you want the strongest durability the platform can provide.
+  where you want the strongest durability currently implemented by AllBox.
 
 ### Persistence errors
 
@@ -392,7 +384,7 @@ full embedded database with queries, indexes or relations (see
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Synchronous reads. |
 | `void write(key, value)` | Optimistic, debounced write. |
 | `Future<void> writeAndSave(key, value)` | Writes and waits for the OS write to complete. |
-| `Future<void> writeAndFlush(key, value)` | Writes and waits for the strongest durability guarantee available. |
+| `Future<void> writeAndFlush(key, value)` | Flushes the temporary file before rename and waits for the strongest durability currently implemented by AllBox. |
 | `void remove(key)` / `void erase()` | Removes a key / clears everything. |
 | `Future<void> flushNow()` | Forces an immediate flush, bypassing the debounce window. |
 | `Future<void> close({flushPending})` | Flushes or discards pending writes, closes the backend storage and removes the container from the internal registry. |
@@ -412,7 +404,7 @@ full embedded database with queries, indexes or relations (see
   names by default; strict mode is available through `validateContainerName`.
 - **Persistence failures are observable.** `onPersistenceError` reports
   async debounced failures without changing `write()` into an async API.
-- **Web is Window/localStorage by default.** `1.0.0-beta.2` adds explicit
+- **Web is Window/localStorage by default.** `1.0.0` keeps the explicit
   opt-in for the IndexedDB migration backend through
   `experimentalIndexedDbBackend: true`. The beta IndexedDB backend mitigates
   multi-tab lost updates for different keys using transactional delta

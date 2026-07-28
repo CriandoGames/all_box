@@ -1,3 +1,30 @@
+## 1.0.0
+
+First stable `1.x` release, consolidating the lifecycle, persistence and Web
+hardening validated during the beta cycle.
+
+- **IO container safety:** path segments `.` and `..` are rejected even in
+  compatibility mode, preventing path traversal and different logical
+  containers from silently resolving to the same file.
+- **Physical-file collision protection:** active IO containers cannot
+  concurrently control the same `.db` file through repeated separators or
+  case aliases on Windows/macOS. Safe nested legacy names remain supported.
+- **Durability contract clarified:** `writeAndSave()` waits for the normal OS
+  write, while `writeAndFlush()` flushes the temporary file before rename and
+  provides the strongest durability currently implemented by AllBox. It does
+  not promise universal power-loss survival because parent-directory metadata
+  is not explicitly synchronized on every platform/filesystem.
+- **Lifecycle and cleanup stabilization:** close/destroy coordination,
+  initialization cleanup and persistence-error handling remain covered by the
+  release regression suite.
+- **Stable Web default:** `window.localStorage` remains the default backend.
+  The migration-backed IndexedDB backend remains experimental and available
+  only through `experimentalIndexedDbBackend: true`.
+- **Compatibility validation:** VM, Dart `3.3.0`, real Chrome/IndexedDB, WASM
+  and the Flutter example were validated for the stable release candidate.
+- **No data migration required:** the public API, user-data format and default
+  backend are unchanged from `1.0.0-beta.2`.
+
 ## 1.0.0-beta.2
 
 Documentation and release metadata correction for the beta channel.

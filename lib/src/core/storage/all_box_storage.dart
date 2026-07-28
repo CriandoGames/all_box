@@ -25,11 +25,11 @@ enum AllBoxPersistMode {
   /// não necessariamente a uma queda de energia / crash do OS.
   save,
 
-  /// Strong durability tier: forces the strongest guarantee the platform can
-  /// offer (e.g. `fsync` on IO).
+  /// Strong durability tier: requests the strongest guarantee currently
+  /// implemented by AllBox (e.g. flushing file contents on IO).
   ///
-  /// **PT-BR:** Nível forte de durabilidade: força a garantia mais forte que
-  /// a plataforma pode oferecer (ex.: `fsync` no IO).
+  /// **PT-BR:** Nível forte de durabilidade: solicita a garantia mais forte
+  /// implementada atualmente pelo AllBox (ex.: flush do conteúdo no IO).
   flush,
 }
 

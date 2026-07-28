@@ -132,6 +132,48 @@ void main() {
   });
 
   group('IO container name validation', () {
+    test('rejects aliases that normalize to another container', () async {
+      const canonical = 'shared';
+      final alias = <String>[
+        'folder',
+        '..',
+        canonical,
+      ].join(Platform.pathSeparator);
+      final dir = await _tempDir('normalized_container_alias');
+      addTearDown(() {
+        AllBox.resetInstanceForTesting(canonical);
+        AllBox.resetInstanceForTesting(alias);
+      });
+
+      final first = await AllBox.init(canonical, path: dir.path);
+      await first.writeAndFlush('first', 1);
+      await expectLater(
+        AllBox.init(alias, path: dir.path),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      await first.close();
+      final reloaded = await AllBox.init(canonical, path: dir.path);
+      expect(reloaded.read<int>('first'), 1);
+    });
+
+    for (final aliasSegments in <List<String>>[
+      <String>['folder', '.', 'shared'],
+      <String>['.', 'shared'],
+      <String>['a', '..', 'b'],
+    ]) {
+      test('rejects alias segments "${aliasSegments.join('/')}"', () async {
+        final container = aliasSegments.join(Platform.pathSeparator);
+        final dir = await _tempDir('alias_${container.hashCode}');
+        addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+        await expectLater(
+          AllBox.init(container, path: dir.path),
+          throwsA(isA<ArgumentError>()),
+        );
+      });
+    }
+
     for (final invalid in <String>[
       '',
       '../outside',
@@ -188,6 +230,7 @@ void main() {
     for (final escapingName in <String>{
       '../outside',
       '..${Platform.pathSeparator}outside',
+      '..${Platform.pathSeparator}..${Platform.pathSeparator}outside',
     }) {
       test('rejects escaping container "$escapingName" in compatibility mode',
           () async {
@@ -208,6 +251,65 @@ void main() {
         );
       });
     }
+
+    test('keeps a safe nested legacy container in compatibility mode',
+        () async {
+      final container =
+          <String>['legacy', 'user-cache'].join(Platform.pathSeparator);
+      final dir = await _tempDir('safe_nested_legacy');
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+
+      final box = await AllBox.init(container, path: dir.path);
+      await box.writeAndFlush('safe', true);
+
+      expect(
+        File(
+          '${dir.path}${Platform.pathSeparator}legacy'
+          '${Platform.pathSeparator}user-cache.db',
+        ).existsSync(),
+        isTrue,
+      );
+    });
+
+    test('rejects repeated-separator aliases of an active container', () async {
+      final canonical =
+          <String>['folder', 'shared'].join(Platform.pathSeparator);
+      final alias = 'folder${Platform.pathSeparator}'
+          '${Platform.pathSeparator}shared';
+      final dir = await _tempDir('repeated_separator_alias');
+      addTearDown(() {
+        AllBox.resetInstanceForTesting(canonical);
+        AllBox.resetInstanceForTesting(alias);
+      });
+
+      final first = await AllBox.init(canonical, path: dir.path);
+      await expectLater(
+        AllBox.init(alias, path: dir.path),
+        throwsA(isA<AllBoxStorageException>()),
+      );
+      await first.close();
+    });
+
+    test(
+      'rejects case aliases on case-insensitive IO platforms',
+      () async {
+        const canonical = 'case_alias';
+        const alias = 'CASE_ALIAS';
+        final dir = await _tempDir('case_alias');
+        addTearDown(() {
+          AllBox.resetInstanceForTesting(canonical);
+          AllBox.resetInstanceForTesting(alias);
+        });
+
+        final first = await AllBox.init(canonical, path: dir.path);
+        await expectLater(
+          AllBox.init(alias, path: dir.path),
+          throwsA(isA<AllBoxStorageException>()),
+        );
+        await first.close();
+      },
+      skip: !Platform.isWindows && !Platform.isMacOS,
+    );
 
     test(
       'IO delete reports a file that could not be removed and tries companions',
