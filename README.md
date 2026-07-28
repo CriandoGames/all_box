@@ -159,7 +159,7 @@ final box = await AllBox.init(
 
 This is an experimental backend. It migrates legacy `localStorage` data into
 IndexedDB and keeps `localStorage` as the default until the backend is
-validated further. When separate tabs write different keys, the beta
+validated further. When separate tabs write different keys, the experimental
 IndexedDB backend merges those changes in a single IndexedDB transaction.
 If two tabs write the same key, the last persisted write wins.
 
@@ -379,7 +379,7 @@ full embedded database with queries, indexes or relations (see
 | Member | Description |
 | --- | --- |
 | `AllBox([container])` | Factory constructor; returns a singleton per container name. |
-| `static AllBox.init(container, {path, flushDelay, initialData, storage, onPersistenceError, validateContainerName, experimentalIndexedDbBackend})` | Loads `container` into memory and returns the initialized `AllBox`. `path` is required on IO platforms, ignored on Web. Container-name validation is opt-in for compatibility. `experimentalIndexedDbBackend` is a Web beta opt-in; localStorage remains the default. |
+| `static AllBox.init(container, {path, flushDelay, initialData, storage, onPersistenceError, validateContainerName, experimentalIndexedDbBackend})` | Loads `container` into memory and returns the initialized `AllBox`. `path` is required on IO platforms, ignored on Web. Container-name validation is opt-in for compatibility. `experimentalIndexedDbBackend` is an experimental Web opt-in; localStorage remains the default. |
 | `static AllBox.memory(container, {initialData})` | Recommended way to test code that consumes `all_box`: no real I/O, no real `Timer`. Replaces the deprecated `initWithMemoryBackendForTesting`. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Synchronous reads. |
 | `void write(key, value)` | Optimistic, debounced write. |
@@ -406,7 +406,7 @@ full embedded database with queries, indexes or relations (see
   async debounced failures without changing `write()` into an async API.
 - **Web is Window/localStorage by default.** `1.0.0` keeps the explicit
   opt-in for the IndexedDB migration backend through
-  `experimentalIndexedDbBackend: true`. The beta IndexedDB backend mitigates
+  `experimentalIndexedDbBackend: true`. The experimental IndexedDB backend mitigates
   multi-tab lost updates for different keys using transactional delta
   merging; same-key conflicts remain last-write-wins. Web Workers, Service
   Workers, and making IndexedDB the default remain future backend work.
