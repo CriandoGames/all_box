@@ -52,7 +52,10 @@ waits for before persistence is considered done:
   `fsync` — survives an app crash, but not necessarily a power loss (the OS
   may still be holding the write in its page cache).
 - **`writeAndFlush()`** waits for `fsync` on IO — the strongest guarantee
-  the platform can offer, surviving power loss as well as an app crash.
+  implemented by this backend. It flushes the temporary file before rename
+  and reduces the power-loss window, but it is not a universal power-loss
+  guarantee: the implementation does not explicitly synchronize parent
+  directory metadata on every platform.
 
 On Web, `writeAndSave()` and `writeAndFlush()` behave identically: a
 `localStorage.setItem` call is already synchronous, so there's no

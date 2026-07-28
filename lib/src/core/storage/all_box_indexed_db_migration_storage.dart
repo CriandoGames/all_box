@@ -24,6 +24,8 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
   Map<String, dynamic> _baseSnapshot = <String, dynamic>{};
 
   String get _legacyKey => 'all_box::$container';
+  String get _pendingFallbackKey => 'all_box_internal::indexeddb_fallback::'
+      '${Uri.encodeComponent(container)}';
 
   @override
   Future<bool> hasPersistedData() async {
@@ -45,6 +47,33 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
     }
 
     if (indexedRaw != null) {
+      final pendingBase = _readPendingFallbackBase();
+      final fallbackRaw = pendingBase == null ? null : _readLegacyRaw();
+      if (pendingBase != null && fallbackRaw != null) {
+        final fallbackSnapshot = _decodeJsonMapOrEmpty(fallbackRaw);
+        try {
+          final recoveredRaw =
+              await _indexedDb.update(container, (currentJsonText) {
+            final currentSnapshot = currentJsonText == null
+                ? <String, dynamic>{}
+                : _decodeJsonMapOrEmpty(currentJsonText);
+            return jsonEncode(
+              _mergeSnapshotDelta(
+                baseSnapshot: pendingBase,
+                localSnapshot: fallbackSnapshot,
+                currentSnapshot: currentSnapshot,
+              ),
+            );
+          });
+          _legacyStorage.removeItem(_legacyKey);
+          _legacyStorage.removeItem(_pendingFallbackKey);
+          _baseSnapshot = _copyJsonMap(fallbackSnapshot);
+          return _decodeJsonMapOrEmpty(recoveredRaw);
+        } on Object {
+          _baseSnapshot = _copyJsonMap(fallbackSnapshot);
+          return _copyJsonMap(fallbackSnapshot);
+        }
+      }
       final loaded = _decodeJsonMapOrEmpty(indexedRaw);
       _baseSnapshot = _copyJsonMap(loaded);
       return _copyJsonMap(loaded);
@@ -57,7 +86,7 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
     }
 
     final loaded = _decodeJsonMapOrEmpty(legacyRaw);
-    _baseSnapshot = _copyJsonMap(loaded);
+    _baseSnapshot = _readPendingFallbackBase() ?? _copyJsonMap(loaded);
     if (loaded.isEmpty && legacyRaw.trim() != '{}') return loaded;
 
     try {
@@ -65,6 +94,7 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
         return currentJsonText ?? legacyRaw;
       });
       _legacyStorage.removeItem(_legacyKey);
+      _legacyStorage.removeItem(_pendingFallbackKey);
     } on Object {
       // Keep localStorage intact until IndexedDB has definitely accepted the
       // migrated value. Loading still succeeds from the legacy copy.
@@ -103,6 +133,7 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
         return jsonEncode(merged);
       });
       _legacyStorage.removeItem(_legacyKey);
+      _legacyStorage.removeItem(_pendingFallbackKey);
       // Keep the local base as this instance's own persisted view, not the
       // merged global snapshot. Otherwise remote keys preserved from another
       // tab would look like local deletions on the next save.
@@ -111,6 +142,10 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
       final jsonText = jsonEncode(localSnapshot);
       try {
         _legacyStorage.setItem(_legacyKey, jsonText);
+        _legacyStorage.setItem(
+          _pendingFallbackKey,
+          jsonEncode(<String, dynamic>{'base': _baseSnapshot}),
+        );
       } on Object catch (legacyError, legacyStackTrace) {
         throw AllBoxStorageException(
           'AllBox("$container"): failed to write to IndexedDB storage and '
@@ -119,7 +154,6 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
           stackTrace: legacyStackTrace,
         );
       }
-      _baseSnapshot = _copyJsonMap(localSnapshot);
       return;
     }
   }
@@ -137,6 +171,7 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
 
     try {
       _legacyStorage.removeItem(_legacyKey);
+      _legacyStorage.removeItem(_pendingFallbackKey);
     } on Object catch (legacyError, legacyStackTrace) {
       throw AllBoxStorageException(
         indexedError == null
@@ -192,13 +227,35 @@ class AllBoxIndexedDbMigrationStorage implements AllBoxStorage {
       return <String, dynamic>{};
     }
     final loaded = _decodeJsonMapOrEmpty(raw);
-    _baseSnapshot = _copyJsonMap(loaded);
+    _baseSnapshot = _readPendingFallbackBase() ?? _copyJsonMap(loaded);
     return _copyJsonMap(loaded);
   }
 
   String? _readLegacyRaw() {
     try {
       return _legacyStorage.getItem(_legacyKey);
+    } on Object {
+      return null;
+    }
+  }
+
+  Map<String, dynamic>? _readPendingFallbackBase() {
+    final String? raw;
+    try {
+      raw = _legacyStorage.getItem(_pendingFallbackKey);
+    } on Object {
+      return null;
+    }
+    if (raw == null) return null;
+    try {
+      final dynamic decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final dynamic base = decoded['base'];
+      if (base is Map<String, dynamic>) return _copyJsonMap(base);
+      if (base is Map<dynamic, dynamic>) {
+        return _copyJsonMap(Map<String, dynamic>.from(base));
+      }
+      return null;
     } on Object {
       return null;
     }

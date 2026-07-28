@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 import 'package:all_box/all_box.dart';
+import 'package:all_box/src/core/storage/all_box_io_storage.dart';
 
 class _LifecycleStorage implements AllBoxStorage {
   _LifecycleStorage([Map<String, dynamic>? initial])
@@ -162,12 +163,15 @@ void main() {
       });
     }
 
-    test('keeps legacy container names accepted by default', () async {
-      const container = 'legacy/user-cache';
+    test('keeps safe legacy container names accepted by default', () async {
+      const container = 'legacy user-cache';
       final dir = await _tempDir('legacy_container_name_default');
       addTearDown(() => AllBox.resetInstanceForTesting(container));
 
-      await expectLater(AllBox.init(container, path: dir.path), completes);
+      final box = await AllBox.init(container, path: dir.path);
+      await box.writeAndFlush('safe', true);
+
+      expect(File('${dir.path}/$container.db').existsSync(), isTrue);
     });
 
     test('keeps existing simple names valid', () async {
@@ -180,5 +184,63 @@ void main() {
 
       expect(File('${dir.path}/$container.db').existsSync(), isTrue);
     });
+
+    for (final escapingName in <String>{
+      '../outside',
+      '..${Platform.pathSeparator}outside',
+    }) {
+      test('rejects escaping container "$escapingName" in compatibility mode',
+          () async {
+        final root = await _tempDir('path_escape_${escapingName.hashCode}');
+        final base = Directory(
+          '${root.path}${Platform.pathSeparator}base',
+        )..createSync();
+        addTearDown(() => AllBox.resetInstanceForTesting(escapingName));
+
+        await expectLater(
+          AllBox.init(escapingName, path: base.path),
+          throwsA(isA<ArgumentError>()),
+        );
+
+        expect(
+          File('${root.path}${Platform.pathSeparator}outside.db').existsSync(),
+          isFalse,
+        );
+      });
+    }
+
+    test(
+      'IO delete reports a file that could not be removed and tries companions',
+      () async {
+        const container = 'delete_failure';
+        final dir = await _tempDir('delete_failure');
+        final storage = AllBoxIoStorage(
+          container: container,
+          directoryPath: dir.path,
+        );
+        await storage.save(
+          {'value': 1},
+          mode: AllBoxPersistMode.flush,
+        );
+        final db = File('${dir.path}${Platform.pathSeparator}$container.db');
+        final tmp = File('${dir.path}${Platform.pathSeparator}$container.tmp');
+        final bak = File('${dir.path}${Platform.pathSeparator}$container.bak');
+        await tmp.writeAsString('tmp');
+        await bak.writeAsString('bak');
+        await Process.run('attrib', <String>['+R', db.path]);
+        addTearDown(() async {
+          await Process.run('attrib', <String>['-R', db.path]);
+        });
+
+        await expectLater(
+          storage.delete(),
+          throwsA(isA<AllBoxStorageException>()),
+        );
+        expect(tmp.existsSync(), isFalse);
+        expect(bak.existsSync(), isFalse);
+        expect(db.existsSync(), isTrue);
+      },
+      skip: !Platform.isWindows,
+    );
   });
 }

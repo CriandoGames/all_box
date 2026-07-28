@@ -60,9 +60,10 @@ How to read this table:
   is better; `all_box`'s recommended path is the optimistic/debounced one
   (rows 1 and 5).
 - **Durable write with fsync** has a single bar because only `all_box`
-  offers this guarantee (`writeAndFlush()`): when the `Future` completes,
-  the data survives power loss, not just an app crash. None of the others
-  have an equivalent API.
+  exposes this tier (`writeAndFlush()`). It flushes the temporary file before
+  rename and narrows the power-loss window; it does not claim universal
+  power-loss survival because parent-directory metadata is not explicitly
+  synchronized on every platform. None of the others have an equivalent API.
 - **GetStorage** is not in the measured table for a technical reason: its
   `write()` Future resolves after scheduling a microtask, without waiting
   even for the buffered OS write — there is no API in GetStorage that

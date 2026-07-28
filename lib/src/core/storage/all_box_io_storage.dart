@@ -38,23 +38,20 @@ class AllBoxIoStorage implements AllBoxStorage {
     required this.container,
     required String directoryPath,
     bool validateContainerName = false,
-  }) : _directory = Directory(directoryPath) {
+  }) : _directory = Directory(directoryPath).absolute {
     if (validateContainerName) {
       _validateContainerName(container);
     }
+    _dbFile = _confinedFile('db');
+    _tmpFile = _confinedFile('tmp');
+    _bakFile = _confinedFile('bak');
   }
 
   final String container;
   final Directory _directory;
-
-  File get _dbFile =>
-      File('${_directory.path}${Platform.pathSeparator}$container.db');
-
-  File get _tmpFile =>
-      File('${_directory.path}${Platform.pathSeparator}$container.tmp');
-
-  File get _bakFile =>
-      File('${_directory.path}${Platform.pathSeparator}$container.bak');
+  late final File _dbFile;
+  late final File _tmpFile;
+  late final File _bakFile;
 
   @override
   Future<bool> hasPersistedData() async {
@@ -65,6 +62,9 @@ class AllBoxIoStorage implements AllBoxStorage {
   Future<Map<String, dynamic>> load() async {
     if (!_directory.existsSync()) {
       await _directory.create(recursive: true);
+    }
+    if (!_tmpFile.parent.existsSync()) {
+      await _tmpFile.parent.create(recursive: true);
     }
 
     final fromMain = await _tryRead(_dbFile);
@@ -171,14 +171,31 @@ class AllBoxIoStorage implements AllBoxStorage {
 
   @override
   Future<void> delete() async {
+    final failures = <Object>[];
+    StackTrace? firstStackTrace;
     for (final file in <File>[_dbFile, _tmpFile, _bakFile]) {
       if (file.existsSync()) {
         try {
           await file.delete();
-        } catch (_) {
-          // Best-effort.
+          if (file.existsSync()) {
+            throw FileSystemException(
+              'File still exists after delete completed.',
+              file.path,
+            );
+          }
+        } on Object catch (error, stackTrace) {
+          firstStackTrace ??= stackTrace;
+          failures.add(error);
         }
       }
+    }
+    if (failures.isNotEmpty) {
+      throw AllBoxStorageException(
+        'AllBox("$container"): failed to delete ${failures.length} persisted '
+        'file(s). All .db, .tmp and .bak files were attempted.',
+        cause: failures.length == 1 ? failures.single : failures,
+        stackTrace: firstStackTrace,
+      );
     }
   }
 
@@ -191,6 +208,38 @@ class AllBoxIoStorage implements AllBoxStorage {
       print(message);
       return true;
     }());
+  }
+
+  File _confinedFile(String extension) {
+    final separator = Platform.pathSeparator;
+    final rawPath = '${_directory.path}$separator$container.$extension';
+    final candidateUri =
+        Uri.file(rawPath, windows: Platform.isWindows).normalizePath();
+    final baseUri = _directory.uri.normalizePath();
+    final baseSegments = baseUri.pathSegments
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+    final candidateSegments = candidateUri.pathSegments
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+    final hasBasePrefix = candidateSegments.length > baseSegments.length &&
+        List<bool>.generate(baseSegments.length, (index) {
+          final base = baseSegments[index];
+          final candidate = candidateSegments[index];
+          return Platform.isWindows
+              ? base.toLowerCase() == candidate.toLowerCase()
+              : base == candidate;
+        }).every((matches) => matches);
+
+    if (!hasBasePrefix) {
+      throw ArgumentError.value(
+        container,
+        'container',
+        'Invalid AllBox container name: its persisted files must remain '
+            'inside the configured directory.',
+      );
+    }
+    return File.fromUri(candidateUri);
   }
 
   static void _validateContainerName(String container) {

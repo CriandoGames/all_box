@@ -60,9 +60,11 @@ Como ler esta tabela:
   loop, o Hive é melhor; o caminho recomendado do `all_box` é o
   otimista/debounced (linhas 1 e 5).
 - **Escrita durável com fsync** só tem uma barra porque só o `all_box`
-  oferece essa garantia (`writeAndFlush()`): quando o `Future` completa, o
-  dado sobrevive a queda de energia, não só a crash do app. Nenhuma das
-  outras tem API equivalente.
+  expõe esse nível (`writeAndFlush()`). Ele faz flush do arquivo temporário
+  antes do rename e reduz a janela de perda em queda de energia; não promete
+  sobrevivência universal porque os metadados do diretório pai não são
+  sincronizados explicitamente em todas as plataformas. Nenhuma das outras
+  tem API equivalente.
 - **GetStorage** não está na tabela medida por um motivo técnico: o
   `Future` do `write()` dele resolve após agendar um microtask, sem
   esperar nem o write bufferizado do OS — não existe API no GetStorage que
