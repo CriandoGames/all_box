@@ -70,7 +70,7 @@ AllBoxStorage createPlatformStorage({
 }) {
   const localStorage = _LocalStorageBrowserStorage();
 
-  // Explicit beta opt-in only. The default Web backend remains localStorage
+  // Explicit experimental opt-in only. The default Web backend remains localStorage
   // until the IndexedDB migration/default-switch plan is promoted.
   if (experimentalIndexedDbBackend) {
     return AllBoxIndexedDbMigrationStorage(

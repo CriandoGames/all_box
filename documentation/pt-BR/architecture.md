@@ -203,12 +203,12 @@ Existe um backend interno de storage IndexedDB por trás de
 `AllBoxIndexedDbStorage` e `AllBoxBrowserIndexedDbDriver`, coberto por
 testes regressivos VM/fake e Chrome real. Ele não é o backend Web padrão:
 `AllBox.init()` continua resolvendo para `window.localStorage` salvo quando
-quem chama opta explicitamente pelo backend beta com migração usando
+quem chama opta explicitamente pelo backend experimental com migração usando
 `experimentalIndexedDbBackend: true`. A compatibilidade do inspector para a
 família de backends Web é coberta abaixo.
 
 O caminho de migração de localStorage -> IndexedDB está implementado como
-`AllBoxIndexedDbMigrationStorage` e é selecionado apenas pelo opt-in beta
+`AllBoxIndexedDbMigrationStorage` e é selecionado apenas pelo opt-in experimental
 explícito. Os testes cobrem leitura de dados legados no localStorage,
 precedência do IndexedDB, migração que remove a cópia legada somente depois
 de uma gravação IndexedDB bem-sucedida, fallback para localStorage quando
@@ -236,7 +236,7 @@ regressivos em navegador também cobrem auto-close em `versionchange` e erro
 explícito quando uma exclusão fica bloqueada. Esse hardening ainda não torna
 IndexedDB o backend Web padrão.
 
-O opt-in beta também é reversível por desenho: remover
+O opt-in experimental também é reversível por desenho: remover
 `experimentalIndexedDbBackend: true` faz `AllBox.init()` voltar para o
 backend localStorage e não ler dados existentes no IndexedDB. Testes
 regressivos em navegador cobrem esse comportamento de rollback e cobrem
@@ -280,7 +280,7 @@ ambiente/navegador antes de fazer afirmações de desempenho sobre bloqueio de
 - **O backend Web default é somente Window e não é seguro para multiaba.**
   Ele usa `window.localStorage` e mantém sincronização apenas dentro da
   janela/isolate Dart atual. Web Workers, Service Workers e escritas
-  multiaba seguras exigem outro backend/contrato. O backend IndexedDB beta
+  multiaba seguras exigem outro backend/contrato. O backend IndexedDB experimental
   mitiga sobrescrita por snapshot antigo para chaves diferentes, mas
   conflitos na mesma chave continuam last-write-wins e não há API de
   notificação reativa cross-tab.

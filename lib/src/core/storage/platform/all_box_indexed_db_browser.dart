@@ -66,7 +66,7 @@ extension type _IDBObjectStore._(JSObject _) implements JSObject {
 /// Web-only IndexedDB driver for [AllBoxIndexedDbStorage].
 ///
 /// The current `window.localStorage` default stays unchanged while this
-/// driver is exercised through the explicit beta IndexedDB opt-in and
+/// driver is exercised through the explicit experimental IndexedDB opt-in and
 /// dedicated browser tests.
 class AllBoxBrowserIndexedDbDriver implements AllBoxIndexedDbDriver {
   AllBoxBrowserIndexedDbDriver({this.databaseName = 'all_box'});

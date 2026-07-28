@@ -5,7 +5,7 @@ import 'all_box_storage.dart';
 import 'all_box_storage_exception.dart';
 import 'all_box_web_storage.dart';
 
-/// Internal migration wrapper for the beta IndexedDB Web backend.
+/// Internal migration wrapper for the experimental IndexedDB Web backend.
 ///
 /// This is selected only when `AllBox.init()` receives
 /// `experimentalIndexedDbBackend: true`. It proves the localStorage ->

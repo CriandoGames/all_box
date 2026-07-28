@@ -192,12 +192,12 @@ An internal IndexedDB storage backend exists behind
 `AllBoxIndexedDbStorage` and `AllBoxBrowserIndexedDbDriver`, with VM/fake
 and real-Chrome regression tests. It is not the default Web backend:
 `AllBox.init()` still resolves to `window.localStorage` unless the caller
-explicitly opts into the beta migration backend with
+explicitly opts into the experimental migration backend with
 `experimentalIndexedDbBackend: true`. Inspector compatibility for the Web
 backend family is covered below.
 
 The localStorage -> IndexedDB migration path is implemented as
-`AllBoxIndexedDbMigrationStorage` and is selected only by the explicit beta
+`AllBoxIndexedDbMigrationStorage` and is selected only by the explicit experimental
 opt-in. Its tests cover legacy localStorage reads, IndexedDB-first
 precedence, migration that removes the legacy copy only after a successful
 IndexedDB write, IndexedDB failure fallback to localStorage, and delete
@@ -222,7 +222,7 @@ diagnostic instead of failing later during a transaction. Browser regression
 tests also cover `versionchange` auto-close behavior and blocked deletion
 errors. This hardening still does not make IndexedDB the default Web backend.
 
-The beta opt-in is reversible by design: removing
+The experimental opt-in is reversible by design: removing
 `experimentalIndexedDbBackend: true` sends `AllBox.init()` back to the
 localStorage backend and does not read existing IndexedDB data. Browser
 regression tests cover that rollback behavior and cover multi-container
@@ -265,7 +265,7 @@ same machine/browser before making performance claims about
 - **The default Web backend is Window-only and not multi-tab safe.**
   It uses `window.localStorage` and keeps synchronization only inside the
   current Dart isolate/window. Web Workers, Service Workers, and safe
-  multi-tab writes require a different backend/contract. The beta IndexedDB
+  multi-tab writes require a different backend/contract. The experimental IndexedDB
   backend mitigates stale-snapshot overwrites for different keys, but
   same-key conflicts remain last-write-wins and there is no cross-tab
   reactive notification API.

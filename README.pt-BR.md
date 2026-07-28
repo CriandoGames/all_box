@@ -156,7 +156,7 @@ final box = await AllBox.init(
 
 Esse backend ainda é experimental. Ele migra dados legados do `localStorage` para o
 IndexedDB e mantém `localStorage` como default até a validação avançar.
-Quando abas separadas escrevem chaves diferentes, o backend IndexedDB beta
+Quando abas separadas escrevem chaves diferentes, o backend IndexedDB experimental
 faz merge dessas mudanças em uma única transação IndexedDB. Se duas abas
 escrevem a mesma chave, a última escrita persistida vence.
 
@@ -381,7 +381,7 @@ com queries, índices ou relações (veja
 | Member | Descrição |
 | --- | --- |
 | `AllBox([container])` | Factory constructor; retorna um singleton por nome de container. |
-| `static AllBox.init(container, {path, flushDelay, initialData, storage, onPersistenceError, validateContainerName, experimentalIndexedDbBackend})` | Carrega o `container` para a memória e retorna o `AllBox` inicializado. `path` é obrigatório em plataformas IO, ignorado na Web. Validação de nome é opt-in por compatibilidade. `experimentalIndexedDbBackend` é opt-in beta na Web; localStorage continua sendo o default. |
+| `static AllBox.init(container, {path, flushDelay, initialData, storage, onPersistenceError, validateContainerName, experimentalIndexedDbBackend})` | Carrega o `container` para a memória e retorna o `AllBox` inicializado. `path` é obrigatório em plataformas IO, ignorado na Web. Validação de nome é opt-in por compatibilidade. `experimentalIndexedDbBackend` é um opt-in experimental na Web; localStorage continua sendo o default. |
 | `static AllBox.memory(container, {initialData})` | Forma recomendada de testar código que consome o `all_box`: sem I/O real, sem `Timer` real. Substitui o descontinuado `initWithMemoryBackendForTesting`. |
 | `T? read<T>(key)` / `T readOrDefault<T>(key, fallback)` | Leituras síncronas. |
 | `void write(key, value)` | Escrita otimista + debounced. |
@@ -410,7 +410,7 @@ O `all_box` segue uma lista curta de decisões de design deliberadas:
   falhas assíncronas do flush debounced sem tornar `write()` assíncrono.
 - **Web usa Window/localStorage por padrão.** A `1.0.0` mantém o
   opt-in explícito para o backend IndexedDB com migração via
-  `experimentalIndexedDbBackend: true`. O backend IndexedDB beta mitiga
+  `experimentalIndexedDbBackend: true`. O backend IndexedDB experimental mitiga
   perda de updates multiaba para chaves diferentes usando merge
   transacional por delta; conflitos na mesma chave continuam last-write-wins.
   Web Workers, Service Workers e tornar IndexedDB o default continuam sendo
