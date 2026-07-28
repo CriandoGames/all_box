@@ -162,6 +162,8 @@ class AllBox {
   _FlushCoordinator? _flush;
   void Function(AllBoxPersistenceError error)? _onPersistenceError;
   bool _initialized = false;
+  String? _lifecycleAction;
+  Future<void>? _lifecycleFuture;
 
   /// Whether [init] (or [memory]) has already completed for this container.
   ///
@@ -269,6 +271,12 @@ class AllBox {
   }) async {
     final box = AllBox(container);
     if (box._initialized) return box;
+    if (box._lifecycleFuture != null) {
+      throw StateError(
+        'AllBox("$container") cannot be initialized while '
+        '${box._lifecycleAction}() is in progress.',
+      );
+    }
 
     final config = _InitializationConfig(
       path: path,
@@ -353,14 +361,22 @@ class AllBox {
       }
       _initialized = true;
       return this;
-    } on Object {
+    } on Object catch (error, stackTrace) {
       coordinator.disposeForTesting();
       if (identical(_flush, coordinator)) {
         _flush = null;
       }
       _box.clear();
       _initialized = false;
-      rethrow;
+      try {
+        await resolvedStorage.close();
+      } on Object catch (cleanupError) {
+        allBoxDebugLog(
+          'AllBox("$container"): storage cleanup after initialization '
+          'failure also failed: $cleanupError',
+        );
+      }
+      Error.throwWithStackTrace(error, stackTrace);
     }
   }
 
@@ -411,6 +427,18 @@ class AllBox {
   }) async {
     final box = AllBox(container);
     if (box._initialized) return box;
+    if (_pendingInitializations.containsKey(container)) {
+      throw StateError(
+        'AllBox("$container") cannot switch to memory storage while init() '
+        'is in progress.',
+      );
+    }
+    if (box._lifecycleFuture != null) {
+      throw StateError(
+        'AllBox("$container") cannot switch to memory storage while '
+        '${box._lifecycleAction}() is in progress.',
+      );
+    }
 
     box._flush = _ImmediateFlushCoordinator(AllBoxMemoryStorage());
     box._box
@@ -501,8 +529,10 @@ class AllBox {
   /// IO platforms (the OS may still be holding it in its page cache). It
   /// keeps the full write-ahead + atomic-rename pipeline on IO, so the
   /// container file can never be left half-written. It is orders of
-  /// magnitude cheaper than [writeAndFlush], whose `fsync` is the only
-  /// guarantee that survives power loss.
+  /// magnitude cheaper than [writeAndFlush], which flushes the temporary
+  /// file before the rename. This is the strongest tier implemented here,
+  /// but it is not a universal power-loss guarantee because directory
+  /// metadata is not explicitly synchronized on every platform.
   ///
   /// Durability ladder: [write] (optimistic, debounced) → [writeAndSave]
   /// (waits for the OS write) → [writeAndFlush] (waits for `fsync`). On Web,
@@ -522,12 +552,15 @@ class AllBox {
   /// segurando o dado no page cache). Mantém o pipeline completo de
   /// write-ahead + rename atômico no IO, então o arquivo do container nunca
   /// fica meio-escrito. É ordens de magnitude mais barato que
-  /// [writeAndFlush], cujo `fsync` é a única garantia que sobrevive a queda
-  /// de energia.
+  /// [writeAndFlush], que faz flush do arquivo temporário antes do rename e
+  /// oferece o nível mais forte implementado atualmente pelo AllBox.
   ///
   /// Escada de durabilidade: [write] (otimista, debounced) →
   /// [writeAndSave] (espera o write do OS) → [writeAndFlush] (espera o
-  /// `fsync`). Na Web, [writeAndSave] e [writeAndFlush] se comportam de
+  /// `fsync`). O nível mais forte reduz a janela de perda em queda de
+  /// energia, mas não é uma garantia universal porque os metadados do
+  /// diretório não são sincronizados explicitamente em todas as plataformas.
+  /// Na Web, [writeAndSave] e [writeAndFlush] se comportam de
   /// forma idêntica — não há distinção significativa a fazer sobre um
   /// `localStorage.setItem` síncrono.
   Future<void> writeAndSave(String key, dynamic value) async {
@@ -595,16 +628,55 @@ class AllBox {
   /// When [flushPending] is true, any pending in-memory changes are flushed
   /// before the underlying storage is closed. When false, pending debounced
   /// writes are discarded.
-  Future<void> close({bool flushPending = true}) async {
+  Future<void> close({bool flushPending = true}) {
+    final lifecycleFuture = _lifecycleFuture;
+    if (lifecycleFuture != null) {
+      if (_lifecycleAction == 'close') return lifecycleFuture;
+      return Future<void>.error(
+        StateError(
+          'AllBox("$container").close() cannot run while '
+          '$_lifecycleAction() is in progress.',
+        ),
+      );
+    }
+    if (_pendingInitializations.containsKey(container)) {
+      return Future<void>.error(
+        StateError(
+          'AllBox("$container").close() cannot run while init() is in '
+          'progress.',
+        ),
+      );
+    }
+
     final coordinator = _flush;
     if (coordinator == null) {
       _initialized = false;
       if (identical(_instances[container], this)) {
         _instances.remove(container);
       }
-      return;
+      return Future<void>.value();
     }
 
+    _initialized = false;
+    _lifecycleAction = 'close';
+    late final Future<void> operation;
+    operation = _closeCoordinator(
+      coordinator,
+      flushPending: flushPending,
+    ).whenComplete(() {
+      if (identical(_lifecycleFuture, operation)) {
+        _lifecycleFuture = null;
+        _lifecycleAction = null;
+      }
+    });
+    _lifecycleFuture = operation;
+    return operation;
+  }
+
+  Future<void> _closeCoordinator(
+    _FlushCoordinator coordinator, {
+    required bool flushPending,
+  }) async {
     try {
       await coordinator.close(_box, flushPending: flushPending);
     } finally {
@@ -623,7 +695,26 @@ class AllBox {
   ///
   /// This is a logical deletion API, not a secure wipe: storage media may
   /// retain old bytes outside this package's control.
-  Future<void> destroy() async {
+  Future<void> destroy() {
+    final lifecycleFuture = _lifecycleFuture;
+    if (lifecycleFuture != null) {
+      if (_lifecycleAction == 'destroy') return lifecycleFuture;
+      return Future<void>.error(
+        StateError(
+          'AllBox("$container").destroy() cannot run while '
+          '$_lifecycleAction() is in progress.',
+        ),
+      );
+    }
+    if (_pendingInitializations.containsKey(container)) {
+      return Future<void>.error(
+        StateError(
+          'AllBox("$container").destroy() cannot run while init() is in '
+          'progress.',
+        ),
+      );
+    }
+
     final coordinator = _flush;
     if (coordinator == null) {
       _box.clear();
@@ -631,9 +722,23 @@ class AllBox {
       if (identical(_instances[container], this)) {
         _instances.remove(container);
       }
-      return;
+      return Future<void>.value();
     }
 
+    _initialized = false;
+    _lifecycleAction = 'destroy';
+    late final Future<void> operation;
+    operation = _destroyCoordinator(coordinator).whenComplete(() {
+      if (identical(_lifecycleFuture, operation)) {
+        _lifecycleFuture = null;
+        _lifecycleAction = null;
+      }
+    });
+    _lifecycleFuture = operation;
+    return operation;
+  }
+
+  Future<void> _destroyCoordinator(_FlushCoordinator coordinator) async {
     try {
       await coordinator.destroy(_box);
     } finally {
@@ -758,7 +863,7 @@ class AllBox {
   /// persistido. Feito para testes; não faz parte da API pública estável.
   static void resetInstanceForTesting(String container) {
     final box = _instances.remove(container);
-    box?._flush?.disposeForTesting();
+    box?._flush?.disposeForTesting(closeStorage: true);
   }
 
   /// Number of times this container has actually flushed since [init] (or
@@ -912,7 +1017,7 @@ abstract class _FlushCoordinator {
     required bool flushPending,
   });
   Future<void> destroy(Map<String, dynamic> snapshot);
-  void disposeForTesting();
+  void disposeForTesting({bool closeStorage = false});
   int get flushCallCountForTesting;
 }
 
@@ -1114,15 +1219,35 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
     required bool flushPending,
   }) async {
     if (_closed) return;
-    if (flushPending) {
-      await flushNow(snapshot);
+    Object? primaryError;
+    StackTrace? primaryStackTrace;
+    if (flushPending && _dirty) {
+      try {
+        await flushNow(snapshot);
+      } on Object catch (error, stackTrace) {
+        primaryError = error;
+        primaryStackTrace = stackTrace;
+      }
     } else {
       _debounceTimer?.cancel();
       _dirty = false;
     }
     await _flushChain.catchError((_) {});
     _closed = true;
-    await _storage.close();
+    try {
+      await _storage.close();
+    } on Object catch (cleanupError, cleanupStackTrace) {
+      if (primaryError == null) {
+        Error.throwWithStackTrace(cleanupError, cleanupStackTrace);
+      }
+      allBoxDebugLog(
+        'AllBox: storage close after flush failure also failed: '
+        '$cleanupError',
+      );
+    }
+    if (primaryError != null) {
+      Error.throwWithStackTrace(primaryError, primaryStackTrace!);
+    }
   }
 
   @override
@@ -1132,8 +1257,28 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
     _dirty = false;
     await _flushChain.catchError((_) {});
     _closed = true;
-    await _storage.delete();
-    await _storage.close();
+    Object? primaryError;
+    StackTrace? primaryStackTrace;
+    try {
+      await _storage.delete();
+    } on Object catch (error, stackTrace) {
+      primaryError = error;
+      primaryStackTrace = stackTrace;
+    }
+    try {
+      await _storage.close();
+    } on Object catch (cleanupError, cleanupStackTrace) {
+      if (primaryError == null) {
+        Error.throwWithStackTrace(cleanupError, cleanupStackTrace);
+      }
+      allBoxDebugLog(
+        'AllBox: storage close after delete failure also failed: '
+        '$cleanupError',
+      );
+    }
+    if (primaryError != null) {
+      Error.throwWithStackTrace(primaryError, primaryStackTrace!);
+    }
   }
 
   Future<void> _persist(
@@ -1145,8 +1290,14 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
     try {
       await _storage.save(snapshot, mode: mode);
     } on Object catch (error, stackTrace) {
-      onPersistenceError(operation, error, stackTrace, true);
-      rethrow;
+      try {
+        onPersistenceError(operation, error, stackTrace, true);
+      } on Object catch (callbackError) {
+        allBoxDebugLog(
+          'AllBox: onPersistenceError callback also failed: $callbackError',
+        );
+      }
+      Error.throwWithStackTrace(error, stackTrace);
     }
   }
 
@@ -1160,8 +1311,11 @@ class _DebouncedFlushCoordinator implements _FlushCoordinator {
   }
 
   @override
-  void disposeForTesting() {
+  void disposeForTesting({bool closeStorage = false}) {
     _debounceTimer?.cancel();
+    if (closeStorage) {
+      unawaited(_storage.close().catchError((_) {}));
+    }
   }
 
   static String _mergeOperation(String current, String next) {
@@ -1228,9 +1382,6 @@ class _ImmediateFlushCoordinator implements _FlushCoordinator {
     required bool flushPending,
   }) async {
     if (_closed) return;
-    if (flushPending) {
-      await flushNow(snapshot);
-    }
     _closed = true;
     await _storage.close();
   }
@@ -1239,10 +1390,34 @@ class _ImmediateFlushCoordinator implements _FlushCoordinator {
   Future<void> destroy(Map<String, dynamic> snapshot) async {
     if (_closed) return;
     _closed = true;
-    await _storage.delete();
-    await _storage.close();
+    Object? primaryError;
+    StackTrace? primaryStackTrace;
+    try {
+      await _storage.delete();
+    } on Object catch (error, stackTrace) {
+      primaryError = error;
+      primaryStackTrace = stackTrace;
+    }
+    try {
+      await _storage.close();
+    } on Object catch (cleanupError, cleanupStackTrace) {
+      if (primaryError == null) {
+        Error.throwWithStackTrace(cleanupError, cleanupStackTrace);
+      }
+      allBoxDebugLog(
+        'AllBox: memory storage close after delete failure also failed: '
+        '$cleanupError',
+      );
+    }
+    if (primaryError != null) {
+      Error.throwWithStackTrace(primaryError, primaryStackTrace!);
+    }
   }
 
   @override
-  void disposeForTesting() {}
+  void disposeForTesting({bool closeStorage = false}) {
+    if (closeStorage) {
+      unawaited(_storage.close().catchError((_) {}));
+    }
+  }
 }

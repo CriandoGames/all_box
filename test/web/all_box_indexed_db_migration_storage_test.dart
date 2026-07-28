@@ -221,6 +221,72 @@ void main() {
       expect(legacy.records[legacyKey], '{"theme":"fallback"}');
     });
 
+    test('recovers a failed IndexedDB save in the same instance', () async {
+      final indexedDb = _FakeIndexedDbDriver()
+        ..records[container] = '{"theme":"old"}';
+      final legacy = _FakeLegacyStorage();
+      final migrating = storage(indexedDb, legacy);
+
+      expect(await migrating.load(), {'theme': 'old'});
+
+      indexedDb.writeError = () => StateError('IndexedDB write failed');
+      await migrating.save(
+        {'theme': 'new'},
+        mode: AllBoxPersistMode.flush,
+      );
+      expect(legacy.records[legacyKey], '{"theme":"new"}');
+
+      indexedDb.writeError = null;
+      await migrating.save(
+        {'theme': 'new'},
+        mode: AllBoxPersistMode.flush,
+      );
+
+      expect(indexedDb.records[container], '{"theme":"new"}');
+      expect(legacy.records.containsKey(legacyKey), isFalse);
+    });
+
+    test('recovers a failed IndexedDB save after a reload', () async {
+      final indexedDb = _FakeIndexedDbDriver()
+        ..records[container] = '{"theme":"old"}';
+      final legacy = _FakeLegacyStorage();
+      final first = storage(indexedDb, legacy);
+
+      expect(await first.load(), {'theme': 'old'});
+      indexedDb.writeError = () => StateError('IndexedDB write failed');
+      await first.save({'theme': 'new'}, mode: AllBoxPersistMode.flush);
+      expect(legacy.records[legacyKey], '{"theme":"new"}');
+
+      indexedDb.writeError = null;
+      final reloaded = storage(indexedDb, legacy);
+      expect(await reloaded.load(), {'theme': 'new'});
+      expect(indexedDb.records[container], '{"theme":"new"}');
+      expect(legacy.records.containsKey(legacyKey), isFalse);
+    });
+
+    test('keeps recovery metadata when reload also starts offline', () async {
+      final indexedDb = _FakeIndexedDbDriver()
+        ..records[container] = '{"theme":"old"}';
+      final legacy = _FakeLegacyStorage();
+      final first = storage(indexedDb, legacy);
+
+      await first.load();
+      indexedDb.writeError = () => StateError('IndexedDB write failed');
+      await first.save({'theme': 'new'}, mode: AllBoxPersistMode.flush);
+
+      indexedDb
+        ..writeError = null
+        ..readError = () => StateError('IndexedDB still unavailable');
+      final reloaded = storage(indexedDb, legacy);
+      expect(await reloaded.load(), {'theme': 'new'});
+
+      indexedDb.readError = null;
+      await reloaded.save({'theme': 'new'}, mode: AllBoxPersistMode.flush);
+
+      expect(indexedDb.records[container], '{"theme":"new"}');
+      expect(legacy.records.containsKey(legacyKey), isFalse);
+    });
+
     test('save reports when IndexedDB and legacy fallback both fail', () async {
       final indexedDb = _FakeIndexedDbDriver()
         ..writeError = () => StateError('IndexedDB write failed');

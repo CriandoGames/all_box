@@ -68,6 +68,41 @@ class _ThrowingIndexedDbDriver implements AllBoxIndexedDbDriver {
   Future<void> close() async {}
 }
 
+class _ToggleIndexedDbDriver implements AllBoxIndexedDbDriver {
+  _ToggleIndexedDbDriver(this.delegate);
+
+  final AllBoxIndexedDbDriver delegate;
+  bool failUpdates = false;
+
+  @override
+  Future<bool> contains(String container) => delegate.contains(container);
+
+  @override
+  Future<String?> read(String container) => delegate.read(container);
+
+  @override
+  Future<void> write(String container, String jsonText) {
+    return delegate.write(container, jsonText);
+  }
+
+  @override
+  Future<String> update(
+    String container,
+    String Function(String? currentJsonText) merge,
+  ) {
+    if (failUpdates) {
+      return Future<String>.error(StateError('IndexedDB update unavailable'));
+    }
+    return delegate.update(container, merge);
+  }
+
+  @override
+  Future<void> delete(String container) => delegate.delete(container);
+
+  @override
+  Future<void> close() => delegate.close();
+}
+
 void main() {
   group('AllBoxIndexedDbMigrationStorage (real browser)', () {
     late String databaseName;
@@ -83,6 +118,10 @@ void main() {
     tearDown(() async {
       for (final container in <String>['settings', 'cache']) {
         legacy.removeItem('all_box::$container');
+        legacy.removeItem(
+          'all_box_internal::indexeddb_fallback::'
+          '${Uri.encodeComponent(container)}',
+        );
       }
       await AllBoxBrowserIndexedDbDriver.deleteDatabaseForTesting(databaseName);
     });
@@ -181,6 +220,52 @@ void main() {
 
       expect(await fallback.load(), {'page': 2});
       expect(legacy.getItem('all_box::cache'), '{"page":2}');
+    });
+
+    test('recovers a fallback into real IndexedDB in the same instance',
+        () async {
+      final driver = _ToggleIndexedDbDriver(
+        AllBoxBrowserIndexedDbDriver(databaseName: databaseName),
+      );
+      final migrating = AllBoxIndexedDbMigrationStorage(
+        container: 'settings',
+        indexedDb: driver,
+        legacyStorage: legacy,
+      );
+
+      await migrating.save({'theme': 'old'}, mode: AllBoxPersistMode.flush);
+      expect(await migrating.load(), {'theme': 'old'});
+      driver.failUpdates = true;
+      await migrating.save({'theme': 'new'}, mode: AllBoxPersistMode.flush);
+      expect(legacy.getItem('all_box::settings'), '{"theme":"new"}');
+
+      driver.failUpdates = false;
+      await migrating.save({'theme': 'new'}, mode: AllBoxPersistMode.flush);
+      expect(await migrating.load(), {'theme': 'new'});
+      expect(legacy.getItem('all_box::settings'), isNull);
+      await migrating.close();
+    });
+
+    test('recovers a fallback into real IndexedDB after reload', () async {
+      final firstDriver = _ToggleIndexedDbDriver(
+        AllBoxBrowserIndexedDbDriver(databaseName: databaseName),
+      );
+      final first = AllBoxIndexedDbMigrationStorage(
+        container: 'settings',
+        indexedDb: firstDriver,
+        legacyStorage: legacy,
+      );
+
+      await first.save({'theme': 'old'}, mode: AllBoxPersistMode.flush);
+      await first.load();
+      firstDriver.failUpdates = true;
+      await first.save({'theme': 'new'}, mode: AllBoxPersistMode.flush);
+      await first.close();
+
+      final reloaded = storage('settings');
+      expect(await reloaded.load(), {'theme': 'new'});
+      expect(legacy.getItem('all_box::settings'), isNull);
+      await reloaded.close();
     });
   });
 }

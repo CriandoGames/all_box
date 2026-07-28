@@ -132,5 +132,28 @@ void main() {
       expect(storage.persisted, {'key': 'recovered'});
       expect(errors, hasLength(1));
     });
+
+    test('an observer callback failure does not mask the storage failure',
+        () async {
+      const container = 'persistence_error_callback_throws';
+      addTearDown(() => AllBox.resetInstanceForTesting(container));
+      final storage = _FailingSaveStorage()..failuresRemaining = 1;
+      final box = await AllBox.init(
+        container,
+        storage: storage,
+        onPersistenceError: (_) => throw StateError('observer failed'),
+      );
+
+      await expectLater(
+        box.writeAndFlush('key', 'value'),
+        throwsA(
+          isA<AllBoxStorageException>().having(
+            (error) => error.message,
+            'message',
+            'save failed',
+          ),
+        ),
+      );
+    });
   });
 }

@@ -55,9 +55,11 @@ considerada concluída:
 - **`writeAndSave()`** espera o write do OS terminar, sem forçar `fsync` —
   sobrevive a um crash do app, mas não necessariamente a uma queda de
   energia (o OS ainda pode estar segurando o write no page cache).
-- **`writeAndFlush()`** espera o `fsync` no IO — a garantia mais forte que
-  a plataforma pode oferecer, sobrevivendo tanto a queda de energia quanto
-  a crash do app.
+- **`writeAndFlush()`** espera o `fsync` no IO — a garantia mais forte
+  implementada por este backend. Ela faz flush do arquivo temporário antes
+  do rename e reduz a janela de perda em queda de energia, mas não é uma
+  garantia universal: a implementação não sincroniza explicitamente os
+  metadados do diretório pai em todas as plataformas.
 
 Na Web, `writeAndSave()` e `writeAndFlush()` se comportam de forma
 idêntica: uma chamada `localStorage.setItem` já é síncrona, então não há

@@ -2,19 +2,21 @@
 ///
 /// Mirrors `AllBox`'s durability ladder: [save] is the cheap tier (survives
 /// an app crash but not necessarily a power loss — no forced fsync on IO),
-/// [flush] is the strong tier (forces an fsync on IO, so it survives a power
-/// loss too). On platforms without a meaningful distinction (Web, in-memory),
-/// both are treated identically.
+/// [flush] is the strong tier (flushes file contents on IO). It reduces the
+/// power-loss window but is not a universal guarantee because directory
+/// metadata durability is platform-dependent. On platforms without a
+/// meaningful distinction (Web, in-memory), both are treated identically.
 ///
 /// **PT-BR:** O quão forte uma chamada de [AllBoxStorage.save] deve
 /// garantir durabilidade.
 ///
 /// Espelha a escada de durabilidade do `AllBox`: [save] é o nível barato
 /// (sobrevive a um crash do app, mas não necessariamente a uma queda de
-/// energia — sem fsync forçado no IO), [flush] é o nível forte (força um
-/// fsync no IO, então sobrevive também a queda de energia). Em plataformas
-/// sem uma distinção significativa (Web, em memória), ambos são tratados de
-/// forma idêntica.
+/// energia — sem fsync forçado no IO), [flush] é o nível forte (faz flush do
+/// conteúdo do arquivo no IO). Ele reduz a janela de perda por queda de
+/// energia, mas não é garantia universal porque a durabilidade dos metadados
+/// do diretório depende da plataforma. Em plataformas sem uma distinção
+/// significativa (Web, em memória), ambos são tratados de forma idêntica.
 enum AllBoxPersistMode {
   /// Cheap durability tier: survives an app crash, not necessarily a power
   /// loss / OS crash.
@@ -23,11 +25,11 @@ enum AllBoxPersistMode {
   /// não necessariamente a uma queda de energia / crash do OS.
   save,
 
-  /// Strong durability tier: forces the strongest guarantee the platform can
-  /// offer (e.g. `fsync` on IO).
+  /// Strong durability tier: requests the strongest guarantee currently
+  /// implemented by AllBox (e.g. flushing file contents on IO).
   ///
-  /// **PT-BR:** Nível forte de durabilidade: força a garantia mais forte que
-  /// a plataforma pode oferecer (ex.: `fsync` no IO).
+  /// **PT-BR:** Nível forte de durabilidade: solicita a garantia mais forte
+  /// implementada atualmente pelo AllBox (ex.: flush do conteúdo no IO).
   flush,
 }
 
