@@ -16,6 +16,8 @@
 💡 Armazenamento chave-valor síncrono e simples para Dart e Flutter, com uma estratégia de escrita crash-safe.
 </p>
 
+![all_box hero](https://raw.githubusercontent.com/CriandoGames/all_box/main/documentation/images/hero.png)
+
 ## Sumário
 
 - [Features](#-features)

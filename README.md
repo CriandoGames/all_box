@@ -16,6 +16,8 @@
 💡 Simple, synchronous key-value storage for Dart and Flutter, with a crash-safe write strategy.
 </p>
 
+![all_box hero](https://raw.githubusercontent.com/CriandoGames/all_box/main/documentation/images/hero.png)
+
 ## Table of contents
 
 - [Features](#-features)
